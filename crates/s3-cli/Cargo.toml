@@ -19,7 +19,7 @@ aws-config = "1"
 aws-sdk-s3 = "1"
 aws-smithy-types = "1"
 clap = { version = "4", features = ["derive"] }
-tokio = { version = "1", features = ["rt", "macros"] }
+tokio = { version = "1", features = ["rt", "rt-multi-thread", "macros"] }
 thiserror = "2"
 jiff = "0.2"
 libc = "0.2"

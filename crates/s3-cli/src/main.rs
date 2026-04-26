@@ -27,7 +27,8 @@ fn main() -> ExitCode {
 
     let Service::S3 { command } = cli.service;
 
-    let rt = tokio::runtime::Builder::new_current_thread()
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .worker_threads(2)
         .enable_all()
         .build()
         .expect("failed to create tokio runtime");
