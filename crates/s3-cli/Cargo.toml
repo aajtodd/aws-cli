@@ -1,0 +1,33 @@
+[package]
+name = "s3-cli"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+description = "Native Rust implementation of the aws s3 CLI subcommand"
+publish = false
+
+[[bin]]
+name = "aws"
+path = "src/main.rs"
+
+[lib]
+name = "s3_cli"
+path = "src/lib.rs"
+
+[dependencies]
+aws-config = "1"
+aws-sdk-s3 = "1"
+aws-smithy-types = "1"
+clap = { version = "4", features = ["derive"] }
+tokio = { version = "1", features = ["rt", "macros"] }
+thiserror = "2"
+jiff = "0.2"
+libc = "0.2"
+
+[dev-dependencies]
+aws-smithy-mocks = "0.2"
+vt100 = "0.16"
+
+[dev-dependencies.aws-sdk-s3]
+version = "1"
+features = ["test-util"]

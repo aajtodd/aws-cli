@@ -37,7 +37,6 @@ nosetests.xml
 
 # IDEA IDE
 .idea*
-src/
 
 # CLI docs generation
 doc/source/aws_man_pages.json
