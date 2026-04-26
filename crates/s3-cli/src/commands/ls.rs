@@ -551,6 +551,128 @@ mod tests {
     }
 
     // -----------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn run_list_objects_recursive_page_size() {
+        // Ported from test_operations_use_page_size_recursive.
+        // Verifies: --page-size + --recursive sets max_keys, no delimiter.
+        let list_objects = mock!(aws_sdk_s3::Client::list_objects_v2)
+            .match_requests(|req| req.max_keys() == Some(8) && req.delimiter().is_none())
+            .then_output(|| ListObjectsV2Output::builder().build());
+        let client = mock_client!(aws_sdk_s3, RuleMode::Sequential, &[list_objects]);
+        let (ctx, _term) = test_ctx_with_client(client);
+
+        let mut args = ls_args("s3://bucket/");
+        args.page_size = Some(8);
+        args.recursive = true;
+        let rc = run(args, &ctx).await.unwrap();
+
+        assert_eq!(rc, 0);
+    }
+
+    #[tokio::test]
+    async fn run_mixed_prefixes_and_objects_returns_0() {
+        // Ported from test_success_rc_has_prefixes_and_objects.
+        // Both CommonPrefixes and Contents present → rc=0.
+        let time = aws_smithy_types::DateTime::from_secs(0);
+        let list_objects = mock!(aws_sdk_s3::Client::list_objects_v2).then_output(move || {
+            ListObjectsV2Output::builder()
+                .common_prefixes(CommonPrefix::builder().prefix("dir/").build())
+                .contents(
+                    Object::builder()
+                        .key("file.txt")
+                        .size(10)
+                        .last_modified(time)
+                        .build(),
+                )
+                .build()
+        });
+        let client = mock_client!(aws_sdk_s3, RuleMode::Sequential, &[list_objects]);
+        let (ctx, _term) = test_ctx_with_client(client);
+
+        let rc = run(ls_args("s3://bucket/prefix"), &ctx).await.unwrap();
+
+        assert_eq!(rc, 0);
+    }
+
+    #[tokio::test]
+    async fn run_only_prefixes_returns_0() {
+        // Ported from test_success_rc_has_only_prefixes.
+        // Only CommonPrefixes, no Contents → rc=0.
+        let list_objects = mock!(aws_sdk_s3::Client::list_objects_v2).then_output(|| {
+            ListObjectsV2Output::builder()
+                .common_prefixes(CommonPrefix::builder().prefix("subdir/").build())
+                .build()
+        });
+        let client = mock_client!(aws_sdk_s3, RuleMode::Sequential, &[list_objects]);
+        let (ctx, _term) = test_ctx_with_client(client);
+
+        let rc = run(ls_args("s3://bucket/prefix"), &ctx).await.unwrap();
+
+        assert_eq!(rc, 0);
+    }
+
+    #[tokio::test]
+    async fn run_pagination_with_empty_second_page_returns_0() {
+        // Ported from test_success_rc_with_pagination.
+        // Page 1 has results, page 2 is empty → rc=0 (not 1).
+        let time = aws_smithy_types::DateTime::from_secs(1389304549);
+        let page1 = mock!(aws_sdk_s3::Client::list_objects_v2).then_output(move || {
+            ListObjectsV2Output::builder()
+                .common_prefixes(CommonPrefix::builder().prefix("foo/").build())
+                .contents(
+                    Object::builder()
+                        .key("foo/bar.txt")
+                        .size(100)
+                        .last_modified(time)
+                        .build(),
+                )
+                .next_continuation_token("token")
+                .build()
+        });
+        let page2 = mock!(aws_sdk_s3::Client::list_objects_v2)
+            .then_output(|| ListObjectsV2Output::builder().build());
+        let client = mock_client!(aws_sdk_s3, RuleMode::Sequential, &[page1, page2]);
+        let (ctx, _term) = test_ctx_with_client(client);
+
+        let rc = run(ls_args("s3://bucket/foo"), &ctx).await.unwrap();
+
+        assert_eq!(rc, 0);
+    }
+
+    #[tokio::test]
+    async fn run_list_objects_ignores_bucket_name_prefix() {
+        // Ported from test_list_objects_ignores_bucket_name_prefix.
+        // --bucket-name-prefix is ignored when listing objects (not buckets).
+        let list_objects = mock!(aws_sdk_s3::Client::list_objects_v2)
+            .match_requests(|req| req.bucket() == Some("mybucket"))
+            .then_output(|| ListObjectsV2Output::builder().build());
+        let client = mock_client!(aws_sdk_s3, RuleMode::Sequential, &[list_objects]);
+        let (ctx, _term) = test_ctx_with_client(client);
+
+        let mut args = ls_args("s3://mybucket/");
+        args.bucket_name_prefix = Some("ignored".to_string());
+        let rc = run(args, &ctx).await.unwrap();
+
+        assert_eq!(rc, 0);
+    }
+
+    #[tokio::test]
+    async fn run_list_objects_ignores_bucket_region() {
+        // Ported from test_list_objects_ignores_bucket_region.
+        // --bucket-region is ignored when listing objects (not buckets).
+        let list_objects = mock!(aws_sdk_s3::Client::list_objects_v2)
+            .match_requests(|req| req.bucket() == Some("mybucket"))
+            .then_output(|| ListObjectsV2Output::builder().build());
+        let client = mock_client!(aws_sdk_s3, RuleMode::Sequential, &[list_objects]);
+        let (ctx, _term) = test_ctx_with_client(client);
+
+        let mut args = ls_args("s3://mybucket/");
+        args.bucket_region = Some("us-west-1".to_string());
+        let rc = run(args, &ctx).await.unwrap();
+
+        assert_eq!(rc, 0);
+    }
     // display_page — unit tests for formatting
     // -----------------------------------------------------------------------
 

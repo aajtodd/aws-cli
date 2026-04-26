@@ -17,23 +17,23 @@ Status key:
 | `test_errors_out_with_extra_arguments` | `cli::tests::unknown_flag_is_error`, `unknown_flag_mentioned_in_error` | ✅ |
 | `test_list_buckets_use_page_size` | `ls::tests::run_list_buckets_page_size` | ✅ |
 | `test_operations_use_page_size` | `ls::tests::run_list_objects_page_size` | ✅ |
-| `test_operations_use_page_size_recursive` | — | ❌ |
-| `test_success_rc_has_prefixes_and_objects` | — | ❌ |
-| `test_success_rc_has_only_prefixes` | — | ❌ |
-| `test_success_rc_has_only_objects` | — | ❌ |
-| `test_success_rc_with_pagination` | — | ❌ |
+| `test_operations_use_page_size_recursive` | `ls::tests::run_list_objects_recursive_page_size` | ✅ |
+| `test_success_rc_has_prefixes_and_objects` | `ls::tests::run_mixed_prefixes_and_objects_returns_0` | ✅ |
+| `test_success_rc_has_only_prefixes` | `ls::tests::run_only_prefixes_returns_0` | ✅ |
+| `test_success_rc_has_only_objects` | `ls::tests::run_list_objects_non_recursive` (implicit) | ✅ |
+| `test_success_rc_with_pagination` | `ls::tests::run_pagination_with_empty_second_page_returns_0` | ✅ |
 | `test_success_rc_empty_bucket_no_key_given` | `ls::tests::run_empty_bucket_returns_0` | ✅ |
 | `test_fail_rc_no_objects_nor_prefixes` | `ls::tests::run_no_match_returns_1` | ✅ |
 | `test_human_readable_file_size` | `format::tests::human_readable_*` (11 tests) | ✅ |
 | `test_summarize` | `ls::tests::run_summarize` | ✅ |
 | `test_summarize_with_human_readable` | `ls::tests::run_summarize_human_readable` | ✅ |
 | `test_requester_pays` | `ls::tests::run_list_objects_request_payer` | ✅ |
-| `test_requester_pays_with_no_args` | — | ❌ |
+| `test_requester_pays_with_no_args` | — | ❌ Blocked: clap requires explicit value |
 | `test_accesspoint_arn` | — | ⏳ ARN parsing not implemented |
 | `test_list_buckets_uses_bucket_name_prefix` | `ls::tests::run_list_buckets_with_prefix_filter` | ✅ |
 | `test_list_buckets_uses_bucket_region` | `ls::tests::run_list_buckets_with_region_filter` | ✅ |
-| `test_list_objects_ignores_bucket_name_prefix` | — | ❌ |
-| `test_list_objects_ignores_bucket_region` | — | ❌ |
+| `test_list_objects_ignores_bucket_name_prefix` | `ls::tests::run_list_objects_ignores_bucket_name_prefix` | ✅ |
+| `test_list_objects_ignores_bucket_region` | `ls::tests::run_list_objects_ignores_bucket_region` | ✅ |
 
 ## unit/customizations/s3/test_subcommands.py
 
