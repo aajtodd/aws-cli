@@ -2,7 +2,7 @@ use aws_smithy_types::error::metadata::ProvideErrorMetadata;
 
 use crate::cli::RmArgs;
 use crate::context::AppContext;
-use crate::error::{Error, Result};
+use crate::error::{format_sdk_error, Error, Result};
 use crate::uri::TransferUri;
 use crate::{termerrln, termoutln};
 
@@ -10,7 +10,13 @@ use crate::{termerrln, termoutln};
 pub async fn run(args: RmArgs, ctx: &AppContext) -> Result<i32> {
     let uri = match &args.path {
         TransferUri::S3(uri) => uri,
-        TransferUri::Local(_) => return Err(Error::InvalidUri(args.path.to_string())),
+        TransferUri::Local(_) => {
+            termerrln!(
+                ctx.term,
+                "\nusage: aws s3 rm <S3Uri>\nError: Invalid argument type"
+            )?;
+            return Ok(252);
+        }
     };
 
     if args.recursive {
@@ -73,7 +79,7 @@ async fn delete_recursive(
     while let Some(page) = pages
         .try_next()
         .await
-        .map_err(|ref e| Error::SdkService(crate::error::format_sdk_error(e, "ListObjectsV2")))?
+        .map_err(|ref e| Error::SdkService(format_sdk_error(e, "ListObjectsV2")))?
     {
         for object in page.contents() {
             if let Some(key) = object.key() {
@@ -119,7 +125,7 @@ async fn delete_recursive(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::cli::{FilterArgs, RmArgs};
+    use crate::cli::RmArgs;
     use crate::term::test_support::InMemoryTerminal;
     use crate::uri::{S3Uri, TransferUri};
     use aws_sdk_s3::operation::delete_object::DeleteObjectOutput;
@@ -147,10 +153,8 @@ mod tests {
             quiet: false,
             recursive: false,
             only_show_errors: false,
-            no_progress: false,
             page_size: None,
             request_payer: None,
-            filters: FilterArgs::default(),
         }
     }
 
@@ -200,13 +204,14 @@ mod tests {
             })
             .then_output(|| DeleteObjectOutput::builder().build());
         let client = mock_client!(aws_sdk_s3, RuleMode::Sequential, &[rule]);
-        let (ctx, _) = test_ctx_with_client(client);
+        let (ctx, term) = test_ctx_with_client(client);
 
         let mut args = rm_args("mybucket", "mykey");
         args.request_payer = Some("requester".to_string());
         let rc = run(args, &ctx).await.unwrap();
 
         assert_eq!(rc, 0);
+        assert_eq!(term.stdout_contents(), "delete: s3://mybucket/mykey");
     }
 
     #[tokio::test]
@@ -374,5 +379,31 @@ mod tests {
         );
         assert!(output.contains("a.txt"));
         assert!(output.contains("d.txt"));
+    }
+
+    #[tokio::test]
+    async fn invalid_path_returns_252() {
+        // rm /local/path → exit 252, matches Python: "usage: aws s3 rm <S3Uri>\nError: Invalid argument type"
+        let client = mock_client!(aws_sdk_s3, RuleMode::Sequential, &[]);
+        let (ctx, term) = test_ctx_with_client(client);
+
+        let args = RmArgs {
+            path: TransferUri::Local(std::path::PathBuf::from("/local/path")),
+            dryrun: false,
+            quiet: false,
+            recursive: false,
+            only_show_errors: false,
+            page_size: None,
+            request_payer: None,
+        };
+        let rc = run(args, &ctx).await.unwrap();
+
+        assert_eq!(rc, 252);
+        let stderr = term.stderr_contents();
+        assert!(stderr.contains("usage: aws s3 rm <S3Uri>"), "got: {stderr}");
+        assert!(
+            stderr.contains("Error: Invalid argument type"),
+            "got: {stderr}"
+        );
     }
 }

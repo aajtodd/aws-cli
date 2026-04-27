@@ -358,16 +358,10 @@ pub struct RmArgs {
     pub only_show_errors: bool,
 
     #[arg(long)]
-    pub no_progress: bool,
-
-    #[arg(long)]
     pub page_size: Option<i32>,
 
     #[arg(long, value_name = "requester")]
     pub request_payer: Option<String>,
-
-    #[command(flatten)]
-    pub filters: FilterArgs,
 }
 
 // ---------------------------------------------------------------------------

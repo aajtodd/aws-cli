@@ -129,9 +129,10 @@ mod tests {
         let client = mock_client!(aws_sdk_s3, RuleMode::Sequential, &[rule], |conf| {
             conf.region(aws_sdk_s3::config::Region::new("us-west-2"))
         });
-        let (ctx, _) = test_ctx_with_client(client);
+        let (ctx, term) = test_ctx_with_client(client);
 
         assert_eq!(run(mb_args("bucket"), &ctx).await.unwrap(), 0);
+        assert_eq!(term.stdout_contents(), "make_bucket: bucket");
     }
 
     #[tokio::test]
@@ -188,11 +189,12 @@ mod tests {
         let client = mock_client!(aws_sdk_s3, RuleMode::Sequential, &[rule], |conf| {
             conf.region(aws_sdk_s3::config::Region::new("us-west-2"))
         });
-        let (ctx, _) = test_ctx_with_client(client);
+        let (ctx, term) = test_ctx_with_client(client);
 
         let mut args = mb_args("bucket");
         args.tags = vec!["Key1".into(), "Value1".into()];
         assert_eq!(run(args, &ctx).await.unwrap(), 0);
+        assert_eq!(term.stdout_contents(), "make_bucket: bucket");
     }
 
     #[tokio::test]

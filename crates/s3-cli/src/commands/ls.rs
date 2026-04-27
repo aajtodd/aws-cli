@@ -573,71 +573,91 @@ mod tests {
     #[tokio::test]
     async fn run_mixed_prefixes_and_objects_returns_0() {
         // Ported from test_success_rc_has_prefixes_and_objects.
-        // Both CommonPrefixes and Contents present → rc=0.
-        let time = aws_smithy_types::DateTime::from_secs(0);
-        let list_objects = mock!(aws_sdk_s3::Client::list_objects_v2).then_output(move || {
-            ListObjectsV2Output::builder()
-                .common_prefixes(CommonPrefix::builder().prefix("dir/").build())
-                .contents(
-                    Object::builder()
-                        .key("file.txt")
-                        .size(10)
-                        .last_modified(time)
-                        .build(),
-                )
-                .build()
-        });
+        // Both CommonPrefixes and Contents present → rc=0, both rendered.
+        let time = aws_smithy_types::DateTime::from_secs(1389304549);
+        let list_objects = mock!(aws_sdk_s3::Client::list_objects_v2)
+            .match_requests(|req| req.bucket() == Some("bucket"))
+            .then_output(move || {
+                ListObjectsV2Output::builder()
+                    .common_prefixes(CommonPrefix::builder().prefix("dir/").build())
+                    .contents(
+                        Object::builder()
+                            .key("prefix/file.txt")
+                            .size(10)
+                            .last_modified(time)
+                            .build(),
+                    )
+                    .build()
+            });
         let client = mock_client!(aws_sdk_s3, RuleMode::Sequential, &[list_objects]);
-        let (ctx, _term) = test_ctx_with_client(client);
+        let (ctx, term) = test_ctx_with_client(client);
 
         let rc = run(ls_args("s3://bucket/prefix"), &ctx).await.unwrap();
 
         assert_eq!(rc, 0);
+        let output = term.stdout_contents();
+        assert!(output.contains("PRE dir/"), "missing prefix: {output}");
+        assert!(output.contains("file.txt"), "missing object: {output}");
     }
 
     #[tokio::test]
     async fn run_only_prefixes_returns_0() {
         // Ported from test_success_rc_has_only_prefixes.
-        // Only CommonPrefixes, no Contents → rc=0.
-        let list_objects = mock!(aws_sdk_s3::Client::list_objects_v2).then_output(|| {
-            ListObjectsV2Output::builder()
-                .common_prefixes(CommonPrefix::builder().prefix("subdir/").build())
-                .build()
-        });
+        // Only CommonPrefixes, no Contents → rc=0, prefix rendered.
+        let list_objects = mock!(aws_sdk_s3::Client::list_objects_v2)
+            .match_requests(|req| req.bucket() == Some("bucket"))
+            .then_output(|| {
+                ListObjectsV2Output::builder()
+                    .common_prefixes(CommonPrefix::builder().prefix("subdir/").build())
+                    .build()
+            });
         let client = mock_client!(aws_sdk_s3, RuleMode::Sequential, &[list_objects]);
-        let (ctx, _term) = test_ctx_with_client(client);
+        let (ctx, term) = test_ctx_with_client(client);
 
         let rc = run(ls_args("s3://bucket/prefix"), &ctx).await.unwrap();
 
         assert_eq!(rc, 0);
+        assert!(
+            term.stdout_contents().contains("PRE subdir/"),
+            "missing prefix: {}",
+            term.stdout_contents()
+        );
     }
 
     #[tokio::test]
     async fn run_pagination_with_empty_second_page_returns_0() {
         // Ported from test_success_rc_with_pagination.
-        // Page 1 has results, page 2 is empty → rc=0 (not 1).
+        // Page 1 has results, page 2 is empty → rc=0 (not 1). Page 1 content rendered.
         let time = aws_smithy_types::DateTime::from_secs(1389304549);
-        let page1 = mock!(aws_sdk_s3::Client::list_objects_v2).then_output(move || {
-            ListObjectsV2Output::builder()
-                .common_prefixes(CommonPrefix::builder().prefix("foo/").build())
-                .contents(
-                    Object::builder()
-                        .key("foo/bar.txt")
-                        .size(100)
-                        .last_modified(time)
-                        .build(),
-                )
-                .next_continuation_token("token")
-                .build()
-        });
+        let page1 = mock!(aws_sdk_s3::Client::list_objects_v2)
+            .match_requests(|req| {
+                req.bucket() == Some("bucket") && req.continuation_token().is_none()
+            })
+            .then_output(move || {
+                ListObjectsV2Output::builder()
+                    .common_prefixes(CommonPrefix::builder().prefix("foo/sub/").build())
+                    .contents(
+                        Object::builder()
+                            .key("foo/bar.txt")
+                            .size(100)
+                            .last_modified(time)
+                            .build(),
+                    )
+                    .next_continuation_token("token")
+                    .build()
+            });
         let page2 = mock!(aws_sdk_s3::Client::list_objects_v2)
+            .match_requests(|req| req.continuation_token() == Some("token"))
             .then_output(|| ListObjectsV2Output::builder().build());
         let client = mock_client!(aws_sdk_s3, RuleMode::Sequential, &[page1, page2]);
-        let (ctx, _term) = test_ctx_with_client(client);
+        let (ctx, term) = test_ctx_with_client(client);
 
         let rc = run(ls_args("s3://bucket/foo"), &ctx).await.unwrap();
 
         assert_eq!(rc, 0);
+        let output = term.stdout_contents();
+        assert!(output.contains("PRE sub/"), "missing prefix: {output}");
+        assert!(output.contains("bar.txt"), "missing object: {output}");
     }
 
     #[tokio::test]
@@ -776,6 +796,35 @@ mod tests {
 
         assert_eq!(rc, 0);
     }
+
+    #[tokio::test]
+    async fn run_list_objects_sdk_error_propagates() {
+        // SDK error on ListObjectsV2 → Error::SdkService propagates, exit 254 via handle_s3_cmd.
+        // Here we verify the Error::SdkService variant with the expected message format.
+        let rule = mock!(aws_sdk_s3::Client::list_objects_v2).then_error(|| {
+            aws_sdk_s3::operation::list_objects_v2::ListObjectsV2Error::generic(
+                aws_smithy_types::error::ErrorMetadata::builder()
+                    .code("NoSuchBucket")
+                    .message("The specified bucket does not exist")
+                    .build(),
+            )
+        });
+        let client = mock_client!(aws_sdk_s3, RuleMode::Sequential, &[rule]);
+        let (ctx, _) = test_ctx_with_client(client);
+
+        let result = run(ls_args("s3://nosuchbucket/"), &ctx).await;
+        let err = result.unwrap_err();
+        match err {
+            crate::error::Error::SdkService(msg) => {
+                assert_eq!(
+                    msg,
+                    "An error occurred (NoSuchBucket) when calling the ListObjectsV2 operation: The specified bucket does not exist"
+                );
+            }
+            other => panic!("expected SdkService error, got: {other:?}"),
+        }
+    }
+
     // display_page — unit tests for formatting
     // -----------------------------------------------------------------------
 
