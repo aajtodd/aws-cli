@@ -402,6 +402,10 @@ pub struct SyncArgs {
 #[derive(Debug, clap::Args)]
 pub struct MbArgs {
     pub path: TransferUri,
+
+    /// Tags to add to the bucket: --tags Key Value (repeatable).
+    #[arg(long, num_args = 2, action = clap::ArgAction::Append, value_names = ["KEY", "VALUE"])]
+    pub tags: Vec<String>,
 }
 
 // ---------------------------------------------------------------------------
@@ -856,6 +860,37 @@ mod tests {
             panic!("expected Mb");
         };
         assert!(matches!(args.path, TransferUri::S3(_)));
+        assert!(args.tags.is_empty());
+    }
+
+    #[test]
+    fn mb_with_tags() {
+        let cli = parse(&[
+            "s3",
+            "mb",
+            "s3://bucket",
+            "--tags",
+            "Key1",
+            "Value1",
+            "--tags",
+            "Key2",
+            "Value2",
+        ]);
+        let Service::S3 { command } = cli.service;
+        let S3Command::Mb(args) = command else {
+            panic!("expected Mb");
+        };
+        assert_eq!(args.tags, vec!["Key1", "Value1", "Key2", "Value2"]);
+    }
+
+    #[test]
+    fn rb_basic() {
+        let cli = parse(&["s3", "rb", "s3://bucket"]);
+        let Service::S3 { command } = cli.service;
+        let S3Command::Rb(args) = command else {
+            panic!("expected Rb");
+        };
+        assert!(!args.force);
     }
 
     #[test]

@@ -115,6 +115,36 @@ Status key:
 | `test_*_request_params_*` | — | ⏳ Request param mapping not implemented |
 | `test_resolves_*` (ARN resolution) | — | ⏳ |
 
+## functional/s3/test_mb_command.py
+
+| Python Test | Rust Equivalent | Status |
+|-------------|-----------------|--------|
+| `test_make_bucket` | `mb::tests::make_bucket_success` | ✅ |
+| `test_adds_location_constraint` | `mb::tests::adds_location_constraint` | ✅ |
+| `test_location_constraint_not_added_on_us_east_1` | `mb::tests::no_location_constraint_for_us_east_1` | ✅ |
+| `test_nonzero_exit_if_invalid_path_provided` | `mb::tests::invalid_path_returns_252` | ✅ |
+| `test_incompatible_with_express_directory_bucket` | `mb::tests::rejects_s3_express_directory_bucket` | ✅ |
+| `test_make_bucket_with_single_tag` | `mb::tests::single_tag` | ✅ |
+| `test_make_bucket_with_single_tag_us_east_1` | `mb::tests::tags_us_east_1_no_location_constraint` | ✅ |
+| `test_make_bucket_with_multiple_tags` | `mb::tests::multiple_tags` | ✅ |
+| `test_account_regional_namespace_bucket` | `mb::tests::account_regional_namespace_bucket` | ✅ |
+| `test_account_regional_namespace_bucket_us_east_1` | `mb::tests::account_regional_namespace_us_east_1` | ✅ |
+| `test_account_regional_namespace_short_bucket_name` | `mb::tests::short_an_bucket` | ✅ |
+| `test_regular_bucket_no_namespace` | `mb::tests::regular_bucket_no_namespace` | ✅ |
+| `test_tags_with_three_arguments_fails` | `cli::tests::mb_missing_path_is_error` | ✅ Clap rejects extra args |
+
+## functional/s3/test_rb_command.py
+
+| Python Test | Rust Equivalent | Status |
+|-------------|-----------------|--------|
+| `test_rb` | `rb::tests::remove_bucket_success` | ✅ |
+| `test_rb_force_empty_bucket` | `rb::tests::force_empty_bucket` | ✅ |
+| `test_rb_force_non_empty_bucket` | `rb::tests::force_non_empty_bucket` | ✅ |
+| `test_rb_failed_rc` | `rb::tests::delete_bucket_failure_returns_1` | ✅ |
+| `test_rb_force_with_failed_rm` | `rb::tests::force_with_failed_list_returns_255` | ✅ |
+| `test_nonzero_exit_if_uri_scheme_not_provided` | `rb::tests::invalid_path_returns_252` | ✅ |
+| `test_nonzero_exit_if_key_provided` | `rb::tests::key_provided_returns_252`, `key_with_force_returns_252` | ✅ |
+
 ## functional/s3/ — Other commands
 
 | File | Tests | Status |
@@ -123,8 +153,6 @@ Status key:
 | `test_mv_command.py` | ~20 tests | ⏳ mv not implemented |
 | `test_rm_command.py` | ~10 tests | ⏳ rm not implemented |
 | `test_sync_command.py` | ~30 tests | ⏳ sync not implemented |
-| `test_mb_command.py` | ~8 tests | ⏳ mb not implemented |
-| `test_rb_command.py` | ~8 tests | ⏳ rb not implemented |
 | `test_presign_command.py` | ~5 tests | ⏳ presign not implemented |
 | `test_website_command.py` | ~5 tests | ⏳ website not implemented |
 

@@ -641,6 +641,109 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn run_multi_page_objects() {
+        // 4 pages of objects, verifies all pages are rendered and summarize accumulates.
+        let time = aws_smithy_types::DateTime::from_secs(1389304549);
+        let pages: Vec<_> = (0..4)
+            .map(|i| {
+                let is_last = i == 3;
+                mock!(aws_sdk_s3::Client::list_objects_v2).then_output(move || {
+                    let mut b = ListObjectsV2Output::builder().contents(
+                        Object::builder()
+                            .key(format!("file{i}.txt"))
+                            .size((i + 1) as i64 * 1000)
+                            .last_modified(time)
+                            .build(),
+                    );
+                    if !is_last {
+                        b = b.next_continuation_token(format!("token{i}"));
+                    }
+                    b.build()
+                })
+            })
+            .collect();
+        let client = mock_client!(
+            aws_sdk_s3,
+            RuleMode::Sequential,
+            &[
+                pages[0].clone(),
+                pages[1].clone(),
+                pages[2].clone(),
+                pages[3].clone()
+            ]
+        );
+        let (ctx, term) = test_ctx_with_client(client);
+
+        let mut args = ls_args("s3://bucket/");
+        args.summarize = true;
+        let rc = run(args, &ctx).await.unwrap();
+
+        assert_eq!(rc, 0);
+        let output = term.stdout_contents();
+        assert!(output.contains("file0.txt"), "missing file0: {output}");
+        assert!(output.contains("file3.txt"), "missing file3: {output}");
+        assert!(output.contains("Total Objects: 4"), "wrong count: {output}");
+        assert!(output.contains("Total Size: 10000"), "wrong size: {output}");
+    }
+
+    #[tokio::test]
+    async fn run_multi_page_buckets() {
+        // 3 pages of bucket listings.
+        let time = aws_smithy_types::DateTime::from_secs(1389304549);
+        let page1 = mock!(aws_sdk_s3::Client::list_buckets).then_output(move || {
+            ListBucketsOutput::builder()
+                .buckets(
+                    Bucket::builder()
+                        .name("bucket-a")
+                        .creation_date(time)
+                        .build(),
+                )
+                .buckets(
+                    Bucket::builder()
+                        .name("bucket-b")
+                        .creation_date(time)
+                        .build(),
+                )
+                .continuation_token("tok1")
+                .build()
+        });
+        let page2 = mock!(aws_sdk_s3::Client::list_buckets).then_output(move || {
+            ListBucketsOutput::builder()
+                .buckets(
+                    Bucket::builder()
+                        .name("bucket-c")
+                        .creation_date(time)
+                        .build(),
+                )
+                .continuation_token("tok2")
+                .build()
+        });
+        let page3 = mock!(aws_sdk_s3::Client::list_buckets).then_output(move || {
+            ListBucketsOutput::builder()
+                .buckets(
+                    Bucket::builder()
+                        .name("bucket-d")
+                        .creation_date(time)
+                        .build(),
+                )
+                .build()
+        });
+        let client = mock_client!(aws_sdk_s3, RuleMode::Sequential, &[page1, page2, page3]);
+        let (ctx, term) = test_ctx_with_client(client);
+
+        let rc = run(ls_args("s3://"), &ctx).await.unwrap();
+
+        assert_eq!(rc, 0);
+        let output = term.stdout_contents();
+        assert!(output.contains("bucket-a"), "missing bucket-a: {output}");
+        assert!(output.contains("bucket-b"), "missing bucket-b: {output}");
+        assert!(output.contains("bucket-c"), "missing bucket-c: {output}");
+        assert!(output.contains("bucket-d"), "missing bucket-d: {output}");
+        // 4 lines of output (one per bucket)
+        assert_eq!(output.lines().count(), 4, "wrong line count: {output}");
+    }
+
+    #[tokio::test]
     async fn run_list_objects_ignores_bucket_name_prefix() {
         // Ported from test_list_objects_ignores_bucket_name_prefix.
         // --bucket-name-prefix is ignored when listing objects (not buckets).
