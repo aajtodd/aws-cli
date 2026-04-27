@@ -145,13 +145,23 @@ Status key:
 | `test_nonzero_exit_if_uri_scheme_not_provided` | `rb::tests::invalid_path_returns_252` | ✅ |
 | `test_nonzero_exit_if_key_provided` | `rb::tests::key_provided_returns_252`, `key_with_force_returns_252` | ✅ |
 
+## functional/s3/test_rm_command.py
+
+| Python Test | Rust Equivalent | Status |
+|-------------|-----------------|--------|
+| `test_operations_used` | `rm::tests::single_delete` | ✅ |
+| `test_dryrun_delete` | `rm::tests::dryrun_delete` | ✅ |
+| `test_delete_with_request_payer` | `rm::tests::delete_with_request_payer` | ✅ |
+| `test_recursive_delete_with_requests` | `rm::tests::recursive_delete_with_request_payer` | ✅ |
+| `test_delete_using_crt_client` | — | ➖ CRT-specific |
+| `test_recursive_delete_using_crt_client` | — | ➖ CRT-specific |
+
 ## functional/s3/ — Other commands
 
 | File | Tests | Status |
 |------|-------|--------|
 | `test_cp_command.py` | ~50 tests | ⏳ cp not implemented |
 | `test_mv_command.py` | ~20 tests | ⏳ mv not implemented |
-| `test_rm_command.py` | ~10 tests | ⏳ rm not implemented |
 | `test_sync_command.py` | ~30 tests | ⏳ sync not implemented |
 | `test_presign_command.py` | ~5 tests | ⏳ presign not implemented |
 | `test_website_command.py` | ~5 tests | ⏳ website not implemented |

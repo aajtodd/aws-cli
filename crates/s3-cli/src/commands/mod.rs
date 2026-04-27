@@ -3,6 +3,7 @@
 pub mod ls;
 pub mod mb;
 pub mod rb;
+pub mod rm;
 
 use crate::cli::S3Command;
 use crate::context::AppContext;
@@ -15,6 +16,7 @@ pub async fn dispatch(command: S3Command, ctx: &AppContext) -> error::Result<i32
         S3Command::Ls(args) => ls::run(args, ctx).await,
         S3Command::Mb(args) => mb::run(args, ctx).await,
         S3Command::Rb(args) => rb::run(args, ctx).await,
+        S3Command::Rm(args) => rm::run(args, ctx).await,
         _ => {
             termerrln!(ctx.term, "command not yet implemented")?;
             Ok(1)

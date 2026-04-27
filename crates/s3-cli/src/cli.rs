@@ -281,7 +281,7 @@ pub struct TransferArgs {
 }
 
 /// Include/exclude filter arguments.
-#[derive(Debug, clap::Args)]
+#[derive(Debug, Default, clap::Args)]
 pub struct FilterArgs {
     #[arg(long)]
     pub include: Vec<String>,
