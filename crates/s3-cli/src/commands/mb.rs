@@ -4,22 +4,24 @@ use aws_smithy_types::error::metadata::ProvideErrorMetadata;
 use crate::cli::MbArgs;
 use crate::context::AppContext;
 use crate::error::Result;
+use crate::exit_code;
 use crate::uri::TransferUri;
 use crate::{termerrln, termoutln};
 
 /// Run the `mb` command.
+#[tracing::instrument(skip(ctx), fields(path = ?args.path))]
 pub async fn run(args: MbArgs, ctx: &AppContext) -> Result<i32> {
     let bucket = match &args.path {
         TransferUri::S3(uri) => &uri.bucket,
         TransferUri::Local(_) => {
             termerrln!(ctx.term, "<S3Uri>\nError: Invalid argument type")?;
-            return Ok(252);
+            return Ok(exit_code::PARAM_VALIDATION_ERROR);
         }
     };
 
     if bucket.ends_with("--x-s3") {
         termerrln!(ctx.term, "Cannot use mb command with a directory bucket.")?;
-        return Ok(252);
+        return Ok(exit_code::PARAM_VALIDATION_ERROR);
     }
 
     let mut builder = ctx.client.create_bucket().bucket(bucket);
@@ -62,13 +64,14 @@ pub async fn run(args: MbArgs, ctx: &AppContext) -> Result<i32> {
             Ok(0)
         }
         Err(ref e) => {
+            tracing::debug!(error = ?e, source = ?std::error::Error::source(e), "CreateBucket failed");
             let code = e.code().unwrap_or("Unknown");
             let msg = e.message().unwrap_or("Unknown error");
             termerrln!(
                 ctx.term,
                 "make_bucket failed: s3://{bucket} An error occurred ({code}) when calling the CreateBucket operation: {msg}"
             )?;
-            Ok(1)
+            Ok(exit_code::FAILURE)
         }
     }
 }

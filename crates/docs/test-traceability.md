@@ -156,6 +156,24 @@ Status key:
 | `test_delete_using_crt_client` | — | ➖ CRT-specific |
 | `test_recursive_delete_using_crt_client` | — | ➖ CRT-specific |
 
+## functional/s3/test_presign_command.py
+
+| Python Test | Rust Equivalent | Status |
+|-------------|-----------------|--------|
+| `test_generates_a_url` | `presign::tests::generates_url` | ✅ |
+| `test_handles_non_dns_compatible_buckets` | `presign::tests::non_dns_compatible_bucket_falls_back_to_path_style` | ✅ |
+| `test_handles_expires_in` | `presign::tests::custom_expires_in` | ✅ |
+| `test_handles_sigv4` | — | ➖ Rust SDK uses sigv4 by default; no opt-in |
+| `test_s3_prefix_not_needed` | `presign::tests::s3_prefix_not_required` | ✅ |
+| `test_can_support_addressing_mode_config` | — | ⏳ `--addressing-style` / `s3.addressing_style` config not wired |
+
+## functional/s3/test_website_command.py
+
+| Python Test | Rust Equivalent | Status |
+|-------------|-----------------|--------|
+| `test_index_document` | `website::tests::index_document` | ✅ |
+| `test_error_document` | `website::tests::error_document` | ✅ |
+
 ## functional/s3/ — Other commands
 
 | File | Tests | Status |
@@ -163,8 +181,6 @@ Status key:
 | `test_cp_command.py` | ~50 tests | ⏳ cp not implemented |
 | `test_mv_command.py` | ~20 tests | ⏳ mv not implemented |
 | `test_sync_command.py` | ~30 tests | ⏳ sync not implemented |
-| `test_presign_command.py` | ~5 tests | ⏳ presign not implemented |
-| `test_website_command.py` | ~5 tests | ⏳ website not implemented |
 
 ## unit/customizations/test_s3errormsg.py
 

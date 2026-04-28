@@ -3,10 +3,12 @@ use aws_smithy_types::error::metadata::ProvideErrorMetadata;
 use crate::cli::RmArgs;
 use crate::context::AppContext;
 use crate::error::{format_sdk_error, Error, Result};
+use crate::exit_code;
 use crate::uri::TransferUri;
 use crate::{termerrln, termoutln};
 
 /// Run the `rm` command.
+#[tracing::instrument(skip(ctx), fields(path = ?args.path, recursive = args.recursive, dryrun = args.dryrun))]
 pub async fn run(args: RmArgs, ctx: &AppContext) -> Result<i32> {
     let uri = match &args.path {
         TransferUri::S3(uri) => uri,
@@ -15,7 +17,7 @@ pub async fn run(args: RmArgs, ctx: &AppContext) -> Result<i32> {
                 ctx.term,
                 "\nusage: aws s3 rm <S3Uri>\nError: Invalid argument type"
             )?;
-            return Ok(252);
+            return Ok(exit_code::PARAM_VALIDATION_ERROR);
         }
     };
 
@@ -47,13 +49,14 @@ async fn delete_single(ctx: &AppContext, bucket: &str, key: &str, args: &RmArgs)
             Ok(0)
         }
         Err(ref e) => {
+            tracing::debug!(error = ?e, source = ?std::error::Error::source(e), "DeleteObject failed (single)");
             let code = e.code().unwrap_or("Unknown");
             let msg = e.message().unwrap_or("Unknown error");
             termerrln!(
                 ctx.term,
                 "delete failed: {path} An error occurred ({code}) when calling the DeleteObject operation: {msg}"
             )?;
-            Ok(1)
+            Ok(exit_code::FAILURE)
         }
     }
 }
@@ -79,6 +82,7 @@ async fn delete_recursive(
     while let Some(page) = pages
         .try_next()
         .await
+        .inspect_err(|e| tracing::debug!(error = ?e, "ListObjectsV2 failed during rm --recursive"))
         .map_err(|ref e| Error::SdkService(format_sdk_error(e, "ListObjectsV2")))?
     {
         for object in page.contents() {
@@ -102,6 +106,7 @@ async fn delete_recursive(
                         }
                     }
                     Err(ref e) => {
+                        tracing::debug!(error = ?e, source = ?std::error::Error::source(e), "DeleteObject failed (recursive)");
                         let code = e.code().unwrap_or("Unknown");
                         let msg = e.message().unwrap_or("Unknown error");
                         termerrln!(
@@ -116,7 +121,7 @@ async fn delete_recursive(
     }
 
     if failures > 0 {
-        Ok(1)
+        Ok(exit_code::FAILURE)
     } else {
         Ok(0)
     }

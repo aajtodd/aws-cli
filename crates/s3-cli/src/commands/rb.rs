@@ -3,10 +3,12 @@ use aws_smithy_types::error::metadata::ProvideErrorMetadata;
 use crate::cli::RbArgs;
 use crate::context::AppContext;
 use crate::error::Result;
+use crate::exit_code;
 use crate::uri::TransferUri;
 use crate::{termerrln, termoutln};
 
 /// Run the `rb` command.
+#[tracing::instrument(skip(ctx), fields(path = ?args.path, force = args.force))]
 pub async fn run(args: RbArgs, ctx: &AppContext) -> Result<i32> {
     let bucket = match &args.path {
         TransferUri::S3(uri) => {
@@ -16,20 +18,20 @@ pub async fn run(args: RbArgs, ctx: &AppContext) -> Result<i32> {
                     "Please specify a valid bucket name only. E.g. s3://{}",
                     uri.bucket
                 )?;
-                return Ok(252);
+                return Ok(exit_code::PARAM_VALIDATION_ERROR);
             }
             &uri.bucket
         }
         TransferUri::Local(_) => {
             termerrln!(ctx.term, "<S3Uri>\nError: Invalid argument type")?;
-            return Ok(252);
+            return Ok(exit_code::PARAM_VALIDATION_ERROR);
         }
     };
 
     if args.force {
         if let Err(msg) = force_delete_objects(ctx, bucket).await {
             termerrln!(ctx.term, "{msg}")?;
-            return Ok(255);
+            return Ok(exit_code::GENERAL_ERROR);
         }
     }
 
@@ -39,13 +41,14 @@ pub async fn run(args: RbArgs, ctx: &AppContext) -> Result<i32> {
             Ok(0)
         }
         Err(ref e) => {
+            tracing::debug!(error = ?e, source = ?std::error::Error::source(e), "DeleteBucket failed");
             let code = e.code().unwrap_or("Unknown");
             let msg = e.message().unwrap_or("Unknown error");
             termerrln!(
                 ctx.term,
                 "remove_bucket failed: s3://{bucket} An error occurred ({code}) when calling the DeleteBucket operation: {msg}"
             )?;
-            Ok(1)
+            Ok(exit_code::FAILURE)
         }
     }
 }
@@ -59,7 +62,8 @@ async fn force_delete_objects(ctx: &AppContext, bucket: &str) -> std::result::Re
         .into_paginator()
         .send();
 
-    while let Some(page) = paginator.try_next().await.map_err(|_| {
+    while let Some(page) = paginator.try_next().await.map_err(|e| {
+        tracing::debug!(error = ?e, source = ?std::error::Error::source(&e), "ListObjectsV2 failed during rb --force");
         "remove_bucket failed: Unable to delete all objects in the bucket, \
          bucket will not be deleted."
             .to_string()
@@ -72,7 +76,8 @@ async fn force_delete_objects(ctx: &AppContext, bucket: &str) -> std::result::Re
                     .key(key)
                     .send()
                     .await
-                    .map_err(|_| {
+                    .map_err(|e| {
+                        tracing::debug!(error = ?e, source = ?std::error::Error::source(&e), %key, "DeleteObject failed during rb --force");
                         "remove_bucket failed: Unable to delete all objects in the bucket, \
                          bucket will not be deleted."
                             .to_string()

@@ -210,3 +210,46 @@ as the native Rust path. At minimum, the user agent must identify:
 transparent replacement) or use a distinct format (for observability
 of the rollout). Either way, the `command/` feature tag is important
 for service-side metrics.
+
+## S3-Specific Config Keys
+
+**Impact:** All commands when users rely on `~/.aws/config` `[s3]` section
+or `AWS_S3_*` env vars to configure S3 behavior.
+
+**Python CLI behavior:** botocore reads the `[s3]` subsection of
+`~/.aws/config` (and per-profile sections) plus `AWS_S3_*` env vars. These
+configure S3-specific behavior including:
+
+| Config Key | Env Var | Default | Effect |
+|------------|---------|---------|--------|
+| `addressing_style` | `AWS_S3_ADDRESSING_STYLE` | `auto` | `path`/`virtual`/`auto` — host-style vs path-style addressing |
+| `use_arn_region` | `AWS_S3_USE_ARN_REGION` | `true` | Use region from access point ARN |
+| `us_east_1_regional_endpoint` | `AWS_S3_US_EAST_1_REGIONAL_ENDPOINT` | `regional` | `regional` vs `legacy` for `us-east-1` |
+| `use_accelerate_endpoint` | `AWS_S3_USE_ACCELERATE_ENDPOINT` | `false` | Transfer Acceleration endpoint |
+| `use_dualstack_endpoint` | `AWS_USE_DUALSTACK_ENDPOINT` | `false` | IPv6 dualstack endpoint |
+| `signature_version` | — | Determined by service | `s3`/`s3v4`/`s3v4a` |
+| `payload_signing_enabled` | — | Default varies | Sign request payload |
+| `s3_disable_multiregion_access_points` | `AWS_S3_DISABLE_MULTIREGION_ACCESS_POINTS` | `false` | Block MRAP usage |
+
+**Rust SDK / aws-config behavior:** The `aws-sdk-s3` crate's `Config`
+builder supports most of these at the code level (`.force_path_style(bool)`,
+`.use_arn_region(bool)`, `.accelerate(bool)`, `.use_dualstack_endpoint(bool)`,
+etc.). But `aws-config` does NOT auto-parse the `[s3]` section of
+`~/.aws/config` or the `AWS_S3_*` env vars. The SDK knows how to use these
+values; it just doesn't discover them from the standard AWS CLI config.
+
+**Resolution:** Parse the `[s3]` section and `AWS_S3_*` env vars ourselves
+and apply them to the S3 `Config` builder. This is a wiring job, not a
+capability gap. Priority keys:
+
+1. `addressing_style` — common, used by users with bucket names containing dots
+2. `use_accelerate_endpoint` — user-visible performance feature
+3. `use_dualstack_endpoint` — IPv6 requirement for some environments
+4. `use_arn_region` — access point ARN usage
+5. `signature_version` — needed for SigV4a (MRAP) and legacy cases
+
+**Python tests affected:**
+- `test_can_support_addressing_mode_config` (presign) — `addressing_style`
+- Various cp/sync tests that implicitly depend on default addressing
+
+Marked as FIXME in `main.rs` `build_context()`.

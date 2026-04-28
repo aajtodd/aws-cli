@@ -11,6 +11,7 @@ pub mod commands;
 pub mod context;
 pub mod error;
 pub mod format;
+pub mod paths;
 pub mod term;
 pub mod uri;
 

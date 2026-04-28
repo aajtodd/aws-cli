@@ -59,6 +59,20 @@ async fn build_context(globals: &GlobalArgs) -> AppContext {
     }
 
     let config = config_loader.load().await;
+
+    // FIXME(compat): aws-config does not parse S3-specific config keys.
+    // Python's botocore reads these from `~/.aws/config` `[s3]` section and
+    // `AWS_S3_*` env vars; we need to read them ourselves and apply to the
+    // S3 Config builder. Affects:
+    //   - addressing_style (path/virtual/auto) → force_path_style
+    //   - use_arn_region → use_arn_region
+    //   - us_east_1_regional_endpoint → (endpoint resolution)
+    //   - use_accelerate_endpoint → accelerate
+    //   - use_dualstack_endpoint → use_dualstack_endpoint
+    //   - signature_version → (sigv4/sigv4a selection)
+    //   - payload_signing_enabled
+    //   - s3_disable_multiregion_access_points
+    // See docs/compat.md for the full list and Python test coverage.
     let client = aws_sdk_s3::Client::new(&config);
     AppContext::new(client, globals.clone())
 }

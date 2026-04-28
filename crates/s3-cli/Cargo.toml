@@ -23,10 +23,19 @@ tokio = { version = "1", features = ["rt", "rt-multi-thread", "macros"] }
 thiserror = "2"
 jiff = "0.2"
 libc = "0.2"
+tracing = "0.1"
+
+[dependencies.aws-sdk-s3-transfer-manager]
+git = "https://github.com/awslabs/aws-s3-transfer-manager-rs.git"
+branch = "s3-tm-vnext"
 
 [dev-dependencies]
 aws-smithy-mocks = "0.2"
+aws-credential-types = { version = "1", features = ["test-util"] }
+aws-smithy-async = "1"
 vt100 = "0.16"
+s3-mock-server = { git = "https://github.com/awslabs/aws-s3-transfer-manager-rs.git", branch = "s3-tm-vnext" }
+tempfile = "3.27.0"
 
 [dev-dependencies.aws-sdk-s3]
 version = "1"

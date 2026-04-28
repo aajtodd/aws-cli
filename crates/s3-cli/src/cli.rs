@@ -420,7 +420,7 @@ pub struct RbArgs {
 
 #[derive(Debug, clap::Args)]
 pub struct PresignArgs {
-    pub path: TransferUri,
+    pub path: String,
 
     #[arg(long, default_value = "3600")]
     pub expires_in: u64,
@@ -432,7 +432,7 @@ pub struct PresignArgs {
 
 #[derive(Debug, clap::Args)]
 pub struct WebsiteArgs {
-    pub path: TransferUri,
+    pub path: String,
 
     #[arg(long)]
     pub index_document: Option<String>,

@@ -3,13 +3,16 @@
 use crate::cli::LsArgs;
 use crate::context::AppContext;
 use crate::error::{format_sdk_error, Error, Result};
+use crate::exit_code;
 use crate::format::{format_datetime_local, format_size, human_readable_size};
 use crate::termoutln;
 use crate::uri::parse_s3_uri;
 
 /// Run the `ls` command.
+#[tracing::instrument(skip(ctx), fields(s3uri = %args.s3uri, recursive = args.recursive))]
 pub async fn run(args: LsArgs, ctx: &AppContext) -> Result<i32> {
     let uri = parse_s3_uri(&args.s3uri).ok_or_else(|| Error::InvalidUri(args.s3uri.clone()))?;
+    tracing::debug!(bucket = %uri.bucket, key = %uri.key, "parsed S3 URI");
 
     let mut state = LsState::new(args.human_readable);
 
@@ -26,7 +29,7 @@ pub async fn run(args: LsArgs, ctx: &AppContext) -> Result<i32> {
     }
 
     if !uri.key.is_empty() && state.empty_result && state.at_first_page {
-        return Ok(1);
+        return Ok(exit_code::FAILURE);
     }
 
     Ok(0)
@@ -69,6 +72,7 @@ async fn list_buckets(ctx: &AppContext, args: &LsArgs, state: &mut LsState) -> R
     while let Some(page) = pages
         .try_next()
         .await
+        .inspect_err(|e| tracing::debug!(error = ?e, "ListBuckets failed"))
         .map_err(|ref e| Error::SdkService(format_sdk_error(e, "ListBuckets")))?
     {
         for bucket in page.buckets() {
@@ -106,6 +110,7 @@ async fn list_objects(
     while let Some(page) = pages
         .try_next()
         .await
+        .inspect_err(|e| tracing::debug!(error = ?e, "ListObjectsV2 failed"))
         .map_err(|ref e| Error::SdkService(format_sdk_error(e, "ListObjectsV2")))?
     {
         display_page(ctx, page.common_prefixes(), page.contents(), true, state)?;
@@ -133,6 +138,7 @@ async fn list_objects_recursive(
     while let Some(page) = pages
         .try_next()
         .await
+        .inspect_err(|e| tracing::debug!(error = ?e, "ListObjectsV2 failed"))
         .map_err(|ref e| Error::SdkService(format_sdk_error(e, "ListObjectsV2")))?
     {
         display_page(ctx, page.common_prefixes(), page.contents(), false, state)?;
