@@ -3,20 +3,19 @@ use aws_smithy_types::error::metadata::ProvideErrorMetadata;
 
 use crate::cli::WebsiteArgs;
 use crate::context::AppContext;
-use crate::error::Result;
-use crate::exit_code;
-use crate::termerrln;
+use crate::error::CommandError;
 
 /// Run the `website` command.
 #[tracing::instrument(skip(ctx), fields(path = %args.path))]
-pub async fn run(args: WebsiteArgs, ctx: &AppContext) -> Result<i32> {
+pub async fn run(args: WebsiteArgs, ctx: &AppContext) -> std::result::Result<(), CommandError> {
     // Python's _get_bucket_name strips s3:// prefix and trailing slash.
     let bucket = args.path.strip_prefix("s3://").unwrap_or(&args.path);
     let bucket = bucket.strip_suffix('/').unwrap_or(bucket);
 
     if bucket.is_empty() {
-        termerrln!(ctx.term, "<S3Uri>\nError: Invalid argument type")?;
-        return Ok(exit_code::PARAM_VALIDATION_ERROR);
+        return Err(CommandError::param_validation(
+            "<S3Uri>\nError: Invalid argument type",
+        ));
     }
 
     let mut config = WebsiteConfiguration::builder();
@@ -40,16 +39,15 @@ pub async fn run(args: WebsiteArgs, ctx: &AppContext) -> Result<i32> {
         .send()
         .await
     {
-        Ok(_) => Ok(0),
-        Err(ref e) => {
-            tracing::debug!(error = ?e, source = ?std::error::Error::source(e), "PutBucketWebsite failed");
+        Ok(_) => Ok(()),
+        Err(e) => {
+            tracing::debug!(error = ?e, source = ?std::error::Error::source(&e), "PutBucketWebsite failed");
             let code = e.code().unwrap_or("Unknown");
             let msg = e.message().unwrap_or("Unknown error");
-            termerrln!(
-                ctx.term,
+            let message = format!(
                 "An error occurred ({code}) when calling the PutBucketWebsite operation: {msg}"
-            )?;
-            Ok(exit_code::FAILURE)
+            );
+            Err(CommandError::failure(message).with_source(e))
         }
     }
 }
@@ -104,9 +102,8 @@ mod tests {
 
         let mut args = website_args("s3://mybucket");
         args.index_document = Some("index.html".to_string());
-        let rc = run(args, &ctx).await.unwrap();
+        run(args, &ctx).await.unwrap();
 
-        assert_eq!(rc, 0);
         // Silent on success (matches Python).
         assert_eq!(term.stdout_contents(), "");
     }
@@ -133,7 +130,7 @@ mod tests {
 
         let mut args = website_args("s3://mybucket");
         args.error_document = Some("mykey".to_string());
-        assert_eq!(run(args, &ctx).await.unwrap(), 0);
+        run(args, &ctx).await.unwrap();
     }
 
     // -- Additional coverage --
@@ -154,7 +151,7 @@ mod tests {
         let mut args = website_args("s3://mybucket");
         args.index_document = Some("idx.html".to_string());
         args.error_document = Some("err.html".to_string());
-        assert_eq!(run(args, &ctx).await.unwrap(), 0);
+        run(args, &ctx).await.unwrap();
     }
 
     #[tokio::test]
@@ -166,7 +163,7 @@ mod tests {
         let client = mock_client!(aws_sdk_s3, RuleMode::Sequential, &[rule]);
         let (ctx, _) = test_ctx_with_client(client);
 
-        assert_eq!(run(website_args("s3://mybucket/"), &ctx).await.unwrap(), 0);
+        run(website_args("s3://mybucket/"), &ctx).await.unwrap();
     }
 
     #[tokio::test]
@@ -177,7 +174,7 @@ mod tests {
         let client = mock_client!(aws_sdk_s3, RuleMode::Sequential, &[rule]);
         let (ctx, _) = test_ctx_with_client(client);
 
-        assert_eq!(run(website_args("mybucket"), &ctx).await.unwrap(), 0);
+        run(website_args("mybucket"), &ctx).await.unwrap();
     }
 
     #[tokio::test]
@@ -192,17 +189,20 @@ mod tests {
         let client = mock_client!(aws_sdk_s3, RuleMode::Sequential, &[rule]);
         let (ctx, _) = test_ctx_with_client(client);
 
-        assert_eq!(run(website_args("s3://mybucket"), &ctx).await.unwrap(), 0);
+        run(website_args("s3://mybucket"), &ctx).await.unwrap();
     }
 
     #[tokio::test]
     async fn empty_path_returns_252() {
         let client = mock_client!(aws_sdk_s3, RuleMode::Sequential, &[]);
-        let (ctx, term) = test_ctx_with_client(client);
+        let (ctx, _term) = test_ctx_with_client(client);
 
-        let rc = run(website_args("s3://"), &ctx).await.unwrap();
+        let err = run(website_args("s3://"), &ctx)
+            .await
+            .expect_err("expected error");
 
-        assert_eq!(rc, 252);
-        assert!(term.stderr_contents().contains("Invalid argument type"));
+        assert_eq!(err.kind, crate::error::CommandErrorKind::ParamValidation);
+        assert_eq!(err.exit_code(), 252);
+        assert!(err.message.contains("Invalid argument type"));
     }
 }

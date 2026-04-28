@@ -2,22 +2,20 @@ use aws_smithy_types::error::metadata::ProvideErrorMetadata;
 
 use crate::cli::RmArgs;
 use crate::context::AppContext;
-use crate::error::{format_sdk_error, Error, Result};
-use crate::exit_code;
+use crate::error::{format_sdk_error, CommandError};
+use crate::termerrln;
+use crate::termoutln;
 use crate::uri::TransferUri;
-use crate::{termerrln, termoutln};
 
 /// Run the `rm` command.
 #[tracing::instrument(skip(ctx), fields(path = ?args.path, recursive = args.recursive, dryrun = args.dryrun))]
-pub async fn run(args: RmArgs, ctx: &AppContext) -> Result<i32> {
+pub async fn run(args: RmArgs, ctx: &AppContext) -> std::result::Result<(), CommandError> {
     let uri = match &args.path {
         TransferUri::S3(uri) => uri,
         TransferUri::Local(_) => {
-            termerrln!(
-                ctx.term,
-                "\nusage: aws s3 rm <S3Uri>\nError: Invalid argument type"
-            )?;
-            return Ok(exit_code::PARAM_VALIDATION_ERROR);
+            return Err(CommandError::param_validation(
+                "\nusage: aws s3 rm <S3Uri>\nError: Invalid argument type",
+            ));
         }
     };
 
@@ -28,12 +26,17 @@ pub async fn run(args: RmArgs, ctx: &AppContext) -> Result<i32> {
     }
 }
 
-async fn delete_single(ctx: &AppContext, bucket: &str, key: &str, args: &RmArgs) -> Result<i32> {
+async fn delete_single(
+    ctx: &AppContext,
+    bucket: &str,
+    key: &str,
+    args: &RmArgs,
+) -> std::result::Result<(), CommandError> {
     let path = format!("s3://{bucket}/{key}");
 
     if args.dryrun {
         termoutln!(ctx.term, "(dryrun) delete: {path}")?;
-        return Ok(0);
+        return Ok(());
     }
 
     let mut builder = ctx.client.delete_object().bucket(bucket).key(key);
@@ -46,17 +49,16 @@ async fn delete_single(ctx: &AppContext, bucket: &str, key: &str, args: &RmArgs)
             if !args.quiet && !args.only_show_errors {
                 termoutln!(ctx.term, "delete: {path}")?;
             }
-            Ok(0)
+            Ok(())
         }
-        Err(ref e) => {
-            tracing::debug!(error = ?e, source = ?std::error::Error::source(e), "DeleteObject failed (single)");
+        Err(e) => {
+            tracing::debug!(error = ?e, source = ?std::error::Error::source(&e), "DeleteObject failed (single)");
             let code = e.code().unwrap_or("Unknown");
             let msg = e.message().unwrap_or("Unknown error");
-            termerrln!(
-                ctx.term,
+            let message = format!(
                 "delete failed: {path} An error occurred ({code}) when calling the DeleteObject operation: {msg}"
-            )?;
-            Ok(exit_code::FAILURE)
+            );
+            Err(CommandError::failure(message).with_source(e))
         }
     }
 }
@@ -66,7 +68,7 @@ async fn delete_recursive(
     bucket: &str,
     prefix: &str,
     args: &RmArgs,
-) -> Result<i32> {
+) -> std::result::Result<(), CommandError> {
     let mut builder = ctx.client.list_objects_v2().bucket(bucket).prefix(prefix);
     if let Some(ref payer) = args.request_payer {
         builder = builder.request_payer(payer.as_str().into());
@@ -79,11 +81,13 @@ async fn delete_recursive(
     let mut failures = 0u64;
     let mut pages = paginator.send();
 
+    // ListObjectsV2 failure is a hard error for the recursive operation —
+    // we couldn't enumerate keys to delete. Propagate as ClientError.
     while let Some(page) = pages
         .try_next()
         .await
         .inspect_err(|e| tracing::debug!(error = ?e, "ListObjectsV2 failed during rm --recursive"))
-        .map_err(|ref e| Error::SdkService(format_sdk_error(e, "ListObjectsV2")))?
+        .map_err(|ref e| CommandError::client(format_sdk_error(e, "ListObjectsV2")))?
     {
         for object in page.contents() {
             if let Some(key) = object.key() {
@@ -109,6 +113,8 @@ async fn delete_recursive(
                         tracing::debug!(error = ?e, source = ?std::error::Error::source(e), "DeleteObject failed (recursive)");
                         let code = e.code().unwrap_or("Unknown");
                         let msg = e.message().unwrap_or("Unknown error");
+                        // Per-item failures stream to stderr inline; the
+                        // partial-failure marker at the end signals exit 1.
                         termerrln!(
                             ctx.term,
                             "delete failed: {path} An error occurred ({code}) when calling the DeleteObject operation: {msg}"
@@ -121,9 +127,9 @@ async fn delete_recursive(
     }
 
     if failures > 0 {
-        Ok(exit_code::FAILURE)
+        Err(CommandError::partial_failure())
     } else {
-        Ok(0)
+        Ok(())
     }
 }
 
@@ -174,9 +180,9 @@ mod tests {
         let client = mock_client!(aws_sdk_s3, RuleMode::Sequential, &[rule]);
         let (ctx, term) = test_ctx_with_client(client);
 
-        let rc = run(rm_args("bucket", "key.txt"), &ctx).await.unwrap();
+        let rc = run(rm_args("bucket", "key.txt"), &ctx).await;
 
-        assert_eq!(rc, 0);
+        assert!(rc.is_ok(), "run failed: {:?}", rc.err());
         assert_eq!(term.stdout_contents(), "delete: s3://bucket/key.txt");
     }
 
@@ -189,9 +195,9 @@ mod tests {
 
         let mut args = rm_args("bucket", "key.txt");
         args.dryrun = true;
-        let rc = run(args, &ctx).await.unwrap();
+        let rc = run(args, &ctx).await;
 
-        assert_eq!(rc, 0);
+        assert!(rc.is_ok(), "run failed: {:?}", rc.err());
         assert_eq!(
             term.stdout_contents(),
             "(dryrun) delete: s3://bucket/key.txt"
@@ -213,9 +219,9 @@ mod tests {
 
         let mut args = rm_args("mybucket", "mykey");
         args.request_payer = Some("requester".to_string());
-        let rc = run(args, &ctx).await.unwrap();
+        let rc = run(args, &ctx).await;
 
-        assert_eq!(rc, 0);
+        assert!(rc.is_ok(), "run failed: {:?}", rc.err());
         assert_eq!(term.stdout_contents(), "delete: s3://mybucket/mykey");
     }
 
@@ -244,9 +250,9 @@ mod tests {
         let mut args = rm_args("mybucket", "");
         args.recursive = true;
         args.request_payer = Some("requester".to_string());
-        let rc = run(args, &ctx).await.unwrap();
+        let rc = run(args, &ctx).await;
 
-        assert_eq!(rc, 0);
+        assert!(rc.is_ok(), "run failed: {:?}", rc.err());
         assert_eq!(term.stdout_contents(), "delete: s3://mybucket/mykey");
     }
 
@@ -267,9 +273,9 @@ mod tests {
         let mut args = rm_args("bucket", "");
         args.recursive = true;
         args.dryrun = true;
-        let rc = run(args, &ctx).await.unwrap();
+        let rc = run(args, &ctx).await;
 
-        assert_eq!(rc, 0);
+        assert!(rc.is_ok(), "run failed: {:?}", rc.err());
         let output = term.stdout_contents();
         assert!(output.contains("(dryrun) delete: s3://bucket/a.txt"));
         assert!(output.contains("(dryrun) delete: s3://bucket/b.txt"));
@@ -284,9 +290,9 @@ mod tests {
 
         let mut args = rm_args("bucket", "key.txt");
         args.quiet = true;
-        let rc = run(args, &ctx).await.unwrap();
+        let rc = run(args, &ctx).await;
 
-        assert_eq!(rc, 0);
+        assert!(rc.is_ok(), "run failed: {:?}", rc.err());
         assert_eq!(term.stdout_contents(), "");
     }
 
@@ -299,9 +305,9 @@ mod tests {
 
         let mut args = rm_args("bucket", "key.txt");
         args.only_show_errors = true;
-        let rc = run(args, &ctx).await.unwrap();
+        let rc = run(args, &ctx).await;
 
-        assert_eq!(rc, 0);
+        assert!(rc.is_ok(), "run failed: {:?}", rc.err());
         assert_eq!(term.stdout_contents(), "");
     }
 
@@ -329,9 +335,10 @@ mod tests {
 
         let mut args = rm_args("bucket", "");
         args.recursive = true;
-        let rc = run(args, &ctx).await.unwrap();
+        let err = run(args, &ctx).await.expect_err("expected partial failure");
 
-        assert_eq!(rc, 1);
+        assert_eq!(err.kind, crate::error::CommandErrorKind::Failure);
+        assert_eq!(err.exit_code(), 1);
         assert!(term
             .stdout_contents()
             .contains("delete: s3://bucket/good.txt"));
@@ -373,9 +380,9 @@ mod tests {
 
         let mut args = rm_args("bucket", "");
         args.recursive = true;
-        let rc = run(args, &ctx).await.unwrap();
+        let rc = run(args, &ctx).await;
 
-        assert_eq!(rc, 0);
+        assert!(rc.is_ok(), "run failed: {:?}", rc.err());
         let output = term.stdout_contents();
         assert_eq!(
             output.lines().count(),
@@ -390,7 +397,7 @@ mod tests {
     async fn invalid_path_returns_252() {
         // rm /local/path → exit 252, matches Python: "usage: aws s3 rm <S3Uri>\nError: Invalid argument type"
         let client = mock_client!(aws_sdk_s3, RuleMode::Sequential, &[]);
-        let (ctx, term) = test_ctx_with_client(client);
+        let (ctx, _term) = test_ctx_with_client(client);
 
         let args = RmArgs {
             path: TransferUri::Local(std::path::PathBuf::from("/local/path")),
@@ -401,14 +408,19 @@ mod tests {
             page_size: None,
             request_payer: None,
         };
-        let rc = run(args, &ctx).await.unwrap();
+        let err = run(args, &ctx).await.expect_err("expected error");
 
-        assert_eq!(rc, 252);
-        let stderr = term.stderr_contents();
-        assert!(stderr.contains("usage: aws s3 rm <S3Uri>"), "got: {stderr}");
+        assert_eq!(err.kind, crate::error::CommandErrorKind::ParamValidation);
+        assert_eq!(err.exit_code(), 252);
         assert!(
-            stderr.contains("Error: Invalid argument type"),
-            "got: {stderr}"
+            err.message.contains("usage: aws s3 rm <S3Uri>"),
+            "got: {}",
+            err.message
+        );
+        assert!(
+            err.message.contains("Error: Invalid argument type"),
+            "got: {}",
+            err.message
         );
     }
 }

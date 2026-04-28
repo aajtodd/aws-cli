@@ -4,15 +4,14 @@ use aws_sdk_s3_transfer_manager::types::{ConcurrencyMode, PartSize};
 
 use crate::cli::CpArgs;
 use crate::context::AppContext;
-use crate::error::Result;
-use crate::exit_code;
+use crate::error::CommandError;
 use crate::paths::format_local_path;
+use crate::termoutln;
 use crate::uri::TransferUri;
-use crate::{termerrln, termoutln};
 
 /// Run the `cp` command.
 #[tracing::instrument(skip(ctx), fields(source = ?args.source, dest = ?args.dest, recursive = args.recursive))]
-pub async fn run(args: CpArgs, ctx: &AppContext) -> Result<i32> {
+pub async fn run(args: CpArgs, ctx: &AppContext) -> std::result::Result<(), CommandError> {
     if args.recursive {
         unimplemented!("cp --recursive not yet implemented");
     }
@@ -32,11 +31,9 @@ pub async fn run(args: CpArgs, ctx: &AppContext) -> Result<i32> {
             unimplemented!("S3 to S3 cp not yet implemented");
         }
         (TransferUri::Local(_), TransferUri::Local(_)) => {
-            termerrln!(
-                ctx.term,
-                "usage: aws s3 cp <LocalPath> <S3Uri> or <S3Uri> <LocalPath> or <S3Uri> <S3Uri>\nError: Invalid argument type"
-            )?;
-            Ok(exit_code::PARAM_VALIDATION_ERROR)
+            Err(CommandError::param_validation(
+                "usage: aws s3 cp <LocalPath> <S3Uri> or <S3Uri> <LocalPath> or <S3Uri> <S3Uri>\nError: Invalid argument type",
+            ))
         }
     }
 }
@@ -49,18 +46,17 @@ async fn upload_single(
     key: &str,
     src_display: String,
     dst_display: String,
-) -> Result<i32> {
+) -> std::result::Result<(), CommandError> {
     let tm = build_tm(ctx);
 
     let stream = match aws_sdk_s3_transfer_manager::io::InputStream::from_path(source) {
         Ok(s) => s,
         Err(e) => {
             tracing::debug!(error = %e, source = %source.display(), "failed to open source file for upload");
-            termerrln!(
-                ctx.term,
+            return Err(CommandError::failure(format!(
                 "upload failed: {src_display} to {dst_display} {e}"
-            )?;
-            return Ok(exit_code::FAILURE);
+            ))
+            .with_source(e));
         }
     };
 
@@ -68,11 +64,10 @@ async fn upload_single(
         Ok(h) => h,
         Err(e) => {
             tracing::debug!(error = %e, "failed to initiate upload");
-            termerrln!(
-                ctx.term,
+            return Err(CommandError::failure(format!(
                 "upload failed: {src_display} to {dst_display} {e}"
-            )?;
-            return Ok(exit_code::FAILURE);
+            ))
+            .with_source(e));
         }
     };
 
@@ -80,15 +75,14 @@ async fn upload_single(
         Ok(_) => {
             tracing::debug!("upload completed successfully");
             termoutln!(ctx.term, "upload: {src_display} to {dst_display}")?;
-            Ok(0)
+            Ok(())
         }
         Err(e) => {
             tracing::debug!(error = %e, "upload failed during transfer");
-            termerrln!(
-                ctx.term,
-                "upload failed: {src_display} to {dst_display} {e}"
-            )?;
-            Ok(exit_code::FAILURE)
+            Err(
+                CommandError::failure(format!("upload failed: {src_display} to {dst_display} {e}"))
+                    .with_source(e),
+            )
         }
     }
 }
@@ -101,7 +95,7 @@ async fn download_single(
     dest: &Path,
     src_display: String,
     dst_display: String,
-) -> Result<i32> {
+) -> std::result::Result<(), CommandError> {
     let tm = build_tm(ctx);
 
     let handle = match tm
@@ -114,11 +108,10 @@ async fn download_single(
         Ok(h) => h,
         Err(e) => {
             tracing::debug!(error = %e, "failed to initiate download");
-            termerrln!(
-                ctx.term,
+            return Err(CommandError::failure(format!(
                 "download failed: {src_display} to {dst_display} {e}"
-            )?;
-            return Ok(exit_code::FAILURE);
+            ))
+            .with_source(e));
         }
     };
 
@@ -126,15 +119,14 @@ async fn download_single(
         Ok(_) => {
             tracing::debug!("download completed successfully");
             termoutln!(ctx.term, "download: {src_display} to {dst_display}")?;
-            Ok(0)
+            Ok(())
         }
         Err(e) => {
             tracing::debug!(error = %e, "download failed during transfer");
-            termerrln!(
-                ctx.term,
+            Err(CommandError::failure(format!(
                 "download failed: {src_display} to {dst_display} {e}"
-            )?;
-            Ok(exit_code::FAILURE)
+            ))
+            .with_source(e))
         }
     }
 }

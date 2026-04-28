@@ -42,14 +42,17 @@ pub mod exit_code {
 /// Returns the process exit code matching the Python CLI's conventions.
 pub async fn handle_s3_cmd(command: S3Command, ctx: &AppContext) -> i32 {
     match commands::dispatch(command, ctx).await {
-        Ok(code) => code,
+        Ok(()) => 0,
         Err(e) => {
-            let _ = termerrln!(ctx.term, "{e}");
-            match e {
-                error::Error::SdkService(_) => exit_code::CLIENT_ERROR,
-                error::Error::InvalidUri(_) => exit_code::PARAM_VALIDATION_ERROR,
-                error::Error::Io(_) => exit_code::GENERAL_ERROR,
+            tracing::debug!(
+                kind = ?e.kind,
+                source = ?std::error::Error::source(&e),
+                "command returned error"
+            );
+            if !e.message.is_empty() {
+                let _ = termerrln!(ctx.term, "{}", e.message);
             }
+            e.exit_code()
         }
     }
 }

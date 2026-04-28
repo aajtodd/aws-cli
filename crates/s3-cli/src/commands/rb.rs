@@ -2,53 +2,49 @@ use aws_smithy_types::error::metadata::ProvideErrorMetadata;
 
 use crate::cli::RbArgs;
 use crate::context::AppContext;
-use crate::error::Result;
-use crate::exit_code;
+use crate::error::CommandError;
+use crate::termoutln;
 use crate::uri::TransferUri;
-use crate::{termerrln, termoutln};
 
 /// Run the `rb` command.
 #[tracing::instrument(skip(ctx), fields(path = ?args.path, force = args.force))]
-pub async fn run(args: RbArgs, ctx: &AppContext) -> Result<i32> {
+pub async fn run(args: RbArgs, ctx: &AppContext) -> std::result::Result<(), CommandError> {
     let bucket = match &args.path {
         TransferUri::S3(uri) => {
             if !uri.key.is_empty() {
-                termerrln!(
-                    ctx.term,
+                return Err(CommandError::param_validation(format!(
                     "Please specify a valid bucket name only. E.g. s3://{}",
                     uri.bucket
-                )?;
-                return Ok(exit_code::PARAM_VALIDATION_ERROR);
+                )));
             }
             &uri.bucket
         }
         TransferUri::Local(_) => {
-            termerrln!(ctx.term, "<S3Uri>\nError: Invalid argument type")?;
-            return Ok(exit_code::PARAM_VALIDATION_ERROR);
+            return Err(CommandError::param_validation(
+                "<S3Uri>\nError: Invalid argument type",
+            ));
         }
     };
 
     if args.force {
         if let Err(msg) = force_delete_objects(ctx, bucket).await {
-            termerrln!(ctx.term, "{msg}")?;
-            return Ok(exit_code::GENERAL_ERROR);
+            return Err(CommandError::general(msg));
         }
     }
 
     match ctx.client.delete_bucket().bucket(bucket).send().await {
         Ok(_) => {
             termoutln!(ctx.term, "remove_bucket: {bucket}")?;
-            Ok(0)
+            Ok(())
         }
-        Err(ref e) => {
-            tracing::debug!(error = ?e, source = ?std::error::Error::source(e), "DeleteBucket failed");
+        Err(e) => {
+            tracing::debug!(error = ?e, source = ?std::error::Error::source(&e), "DeleteBucket failed");
             let code = e.code().unwrap_or("Unknown");
             let msg = e.message().unwrap_or("Unknown error");
-            termerrln!(
-                ctx.term,
+            let message = format!(
                 "remove_bucket failed: s3://{bucket} An error occurred ({code}) when calling the DeleteBucket operation: {msg}"
-            )?;
-            Ok(exit_code::FAILURE)
+            );
+            Err(CommandError::failure(message).with_source(e))
         }
     }
 }
@@ -131,9 +127,9 @@ mod tests {
         let client = mock_client!(aws_sdk_s3, RuleMode::Sequential, &[rule]);
         let (ctx, term) = test_ctx_with_client(client);
 
-        let rc = run(rb_args("bucket", false), &ctx).await.unwrap();
+        let rc = run(rb_args("bucket", false), &ctx).await;
 
-        assert_eq!(rc, 0);
+        assert!(rc.is_ok(), "run failed: {:?}", rc.err());
         assert_eq!(term.stdout_contents(), "remove_bucket: bucket");
     }
 
@@ -148,9 +144,9 @@ mod tests {
         let client = mock_client!(aws_sdk_s3, RuleMode::Sequential, &[list, delete]);
         let (ctx, term) = test_ctx_with_client(client);
 
-        let rc = run(rb_args("bucket", true), &ctx).await.unwrap();
+        let rc = run(rb_args("bucket", true), &ctx).await;
 
-        assert_eq!(rc, 0);
+        assert!(rc.is_ok(), "run failed: {:?}", rc.err());
         assert_eq!(term.stdout_contents(), "remove_bucket: bucket");
     }
 
@@ -174,9 +170,9 @@ mod tests {
         );
         let (ctx, term) = test_ctx_with_client(client);
 
-        let rc = run(rb_args("bucket", true), &ctx).await.unwrap();
+        let rc = run(rb_args("bucket", true), &ctx).await;
 
-        assert_eq!(rc, 0);
+        assert!(rc.is_ok(), "run failed: {:?}", rc.err());
         assert_eq!(term.stdout_contents(), "remove_bucket: bucket");
     }
 
@@ -184,23 +180,24 @@ mod tests {
     async fn invalid_path_returns_252() {
         // Ported from test_nonzero_exit_if_uri_scheme_not_provided.
         let client = mock_client!(aws_sdk_s3, RuleMode::Sequential, &[]);
-        let (ctx, term) = test_ctx_with_client(client);
+        let (ctx, _term) = test_ctx_with_client(client);
 
         let args = RbArgs {
             path: TransferUri::Local(PathBuf::from("bucket")),
             force: false,
         };
-        let rc = run(args, &ctx).await.unwrap();
+        let err = run(args, &ctx).await.expect_err("expected error");
 
-        assert_eq!(rc, 252);
-        assert!(term.stderr_contents().contains("Invalid argument type"));
+        assert_eq!(err.kind, crate::error::CommandErrorKind::ParamValidation);
+        assert_eq!(err.exit_code(), 252);
+        assert!(err.message.contains("Invalid argument type"));
     }
 
     #[tokio::test]
     async fn key_provided_returns_252() {
         // Ported from test_nonzero_exit_if_key_provided.
         let client = mock_client!(aws_sdk_s3, RuleMode::Sequential, &[]);
-        let (ctx, term) = test_ctx_with_client(client);
+        let (ctx, _term) = test_ctx_with_client(client);
 
         let args = RbArgs {
             path: TransferUri::S3(S3Uri {
@@ -209,11 +206,12 @@ mod tests {
             }),
             force: false,
         };
-        let rc = run(args, &ctx).await.unwrap();
+        let err = run(args, &ctx).await.expect_err("expected error");
 
-        assert_eq!(rc, 252);
-        assert!(term
-            .stderr_contents()
+        assert_eq!(err.kind, crate::error::CommandErrorKind::ParamValidation);
+        assert_eq!(err.exit_code(), 252);
+        assert!(err
+            .message
             .contains("Please specify a valid bucket name only"));
     }
 
@@ -221,7 +219,7 @@ mod tests {
     async fn key_with_force_returns_252() {
         // Also from test_nonzero_exit_if_key_provided (second case with --force).
         let client = mock_client!(aws_sdk_s3, RuleMode::Sequential, &[]);
-        let (ctx, term) = test_ctx_with_client(client);
+        let (ctx, _term) = test_ctx_with_client(client);
 
         let args = RbArgs {
             path: TransferUri::S3(S3Uri {
@@ -230,11 +228,12 @@ mod tests {
             }),
             force: true,
         };
-        let rc = run(args, &ctx).await.unwrap();
+        let err = run(args, &ctx).await.expect_err("expected error");
 
-        assert_eq!(rc, 252);
-        assert!(term
-            .stderr_contents()
+        assert_eq!(err.kind, crate::error::CommandErrorKind::ParamValidation);
+        assert_eq!(err.exit_code(), 252);
+        assert!(err
+            .message
             .contains("Please specify a valid bucket name only"));
     }
 
@@ -250,12 +249,15 @@ mod tests {
             )
         });
         let client = mock_client!(aws_sdk_s3, RuleMode::Sequential, &[rule]);
-        let (ctx, term) = test_ctx_with_client(client);
+        let (ctx, _term) = test_ctx_with_client(client);
 
-        let rc = run(rb_args("bucket", false), &ctx).await.unwrap();
+        let err = run(rb_args("bucket", false), &ctx)
+            .await
+            .expect_err("expected error");
 
-        assert_eq!(rc, 1);
-        assert!(term.stderr_contents().contains("remove_bucket failed:"));
+        assert_eq!(err.kind, crate::error::CommandErrorKind::Failure);
+        assert_eq!(err.exit_code(), 1);
+        assert!(err.message.contains("remove_bucket failed:"));
     }
 
     #[tokio::test]
@@ -271,11 +273,14 @@ mod tests {
             )
         });
         let client = mock_client!(aws_sdk_s3, RuleMode::Sequential, &[rule]);
-        let (ctx, term) = test_ctx_with_client(client);
+        let (ctx, _term) = test_ctx_with_client(client);
 
-        let rc = run(rb_args("bucket", true), &ctx).await.unwrap();
+        let err = run(rb_args("bucket", true), &ctx)
+            .await
+            .expect_err("expected error");
 
-        assert_eq!(rc, 255);
-        assert!(term.stderr_contents().contains("remove_bucket failed:"));
+        assert_eq!(err.kind, crate::error::CommandErrorKind::General);
+        assert_eq!(err.exit_code(), 255);
+        assert!(err.message.contains("remove_bucket failed:"));
     }
 }

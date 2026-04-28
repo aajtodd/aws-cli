@@ -10,10 +10,13 @@ pub mod website;
 
 use crate::cli::S3Command;
 use crate::context::AppContext;
-use crate::{error, exit_code, termerrln};
+use crate::error::CommandError;
 
 /// Dispatch a parsed S3 command to its implementation.
-pub async fn dispatch(command: S3Command, ctx: &AppContext) -> error::Result<i32> {
+pub async fn dispatch(
+    command: S3Command,
+    ctx: &AppContext,
+) -> std::result::Result<(), CommandError> {
     match command {
         S3Command::Ls(args) => ls::run(args, ctx).await,
         S3Command::Cp(args) => cp::run(args, ctx).await,
@@ -23,8 +26,7 @@ pub async fn dispatch(command: S3Command, ctx: &AppContext) -> error::Result<i32
         S3Command::Presign(args) => presign::run(args, ctx).await,
         S3Command::Website(args) => website::run(args, ctx).await,
         S3Command::Mv(_) | S3Command::Sync(_) => {
-            termerrln!(ctx.term, "command not yet implemented")?;
-            Ok(exit_code::FAILURE)
+            Err(CommandError::failure("command not yet implemented"))
         }
     }
 }

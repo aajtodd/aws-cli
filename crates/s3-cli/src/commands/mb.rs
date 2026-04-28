@@ -3,25 +3,26 @@ use aws_smithy_types::error::metadata::ProvideErrorMetadata;
 
 use crate::cli::MbArgs;
 use crate::context::AppContext;
-use crate::error::Result;
-use crate::exit_code;
+use crate::error::CommandError;
+use crate::termoutln;
 use crate::uri::TransferUri;
-use crate::{termerrln, termoutln};
 
 /// Run the `mb` command.
 #[tracing::instrument(skip(ctx), fields(path = ?args.path))]
-pub async fn run(args: MbArgs, ctx: &AppContext) -> Result<i32> {
+pub async fn run(args: MbArgs, ctx: &AppContext) -> std::result::Result<(), CommandError> {
     let bucket = match &args.path {
         TransferUri::S3(uri) => &uri.bucket,
         TransferUri::Local(_) => {
-            termerrln!(ctx.term, "<S3Uri>\nError: Invalid argument type")?;
-            return Ok(exit_code::PARAM_VALIDATION_ERROR);
+            return Err(CommandError::param_validation(
+                "<S3Uri>\nError: Invalid argument type",
+            ));
         }
     };
 
     if bucket.ends_with("--x-s3") {
-        termerrln!(ctx.term, "Cannot use mb command with a directory bucket.")?;
-        return Ok(exit_code::PARAM_VALIDATION_ERROR);
+        return Err(CommandError::param_validation(
+            "Cannot use mb command with a directory bucket.",
+        ));
     }
 
     let mut builder = ctx.client.create_bucket().bucket(bucket);
@@ -61,17 +62,16 @@ pub async fn run(args: MbArgs, ctx: &AppContext) -> Result<i32> {
     match builder.send().await {
         Ok(_) => {
             termoutln!(ctx.term, "make_bucket: {bucket}")?;
-            Ok(0)
+            Ok(())
         }
-        Err(ref e) => {
-            tracing::debug!(error = ?e, source = ?std::error::Error::source(e), "CreateBucket failed");
+        Err(e) => {
+            tracing::debug!(error = ?e, source = ?std::error::Error::source(&e), "CreateBucket failed");
             let code = e.code().unwrap_or("Unknown");
             let msg = e.message().unwrap_or("Unknown error");
-            termerrln!(
-                ctx.term,
+            let message = format!(
                 "make_bucket failed: s3://{bucket} An error occurred ({code}) when calling the CreateBucket operation: {msg}"
-            )?;
-            Ok(exit_code::FAILURE)
+            );
+            Err(CommandError::failure(message).with_source(e))
         }
     }
 }
@@ -113,9 +113,9 @@ mod tests {
         let client = mock_client!(aws_sdk_s3, RuleMode::Sequential, &[rule]);
         let (ctx, term) = test_ctx_with_client(client);
 
-        let rc = run(mb_args("mybucket"), &ctx).await.unwrap();
+        let rc = run(mb_args("mybucket"), &ctx).await;
 
-        assert_eq!(rc, 0);
+        assert!(rc.is_ok(), "run failed: {:?}", rc.err());
         assert_eq!(term.stdout_contents(), "make_bucket: mybucket");
     }
 
@@ -134,7 +134,7 @@ mod tests {
         });
         let (ctx, term) = test_ctx_with_client(client);
 
-        assert_eq!(run(mb_args("bucket"), &ctx).await.unwrap(), 0);
+        run(mb_args("bucket"), &ctx).await.unwrap();
         assert_eq!(term.stdout_contents(), "make_bucket: bucket");
     }
 
@@ -148,33 +148,36 @@ mod tests {
         });
         let (ctx, _) = test_ctx_with_client(client);
 
-        assert_eq!(run(mb_args("bucket"), &ctx).await.unwrap(), 0);
+        run(mb_args("bucket"), &ctx).await.unwrap();
     }
 
     #[tokio::test]
     async fn invalid_path_returns_252() {
         let client = mock_client!(aws_sdk_s3, RuleMode::Sequential, &[]);
-        let (ctx, term) = test_ctx_with_client(client);
+        let (ctx, _term) = test_ctx_with_client(client);
 
         let args = MbArgs {
             path: TransferUri::Local(PathBuf::from("bucket")),
             tags: vec![],
         };
-        assert_eq!(run(args, &ctx).await.unwrap(), 252);
-        assert!(term.stderr_contents().contains("Invalid argument type"));
+        let err = run(args, &ctx).await.expect_err("expected error");
+        assert_eq!(err.kind, crate::error::CommandErrorKind::ParamValidation);
+        assert_eq!(err.exit_code(), 252);
+        assert!(err.message.contains("Invalid argument type"));
     }
 
     #[tokio::test]
     async fn rejects_s3_express_directory_bucket() {
         let client = mock_client!(aws_sdk_s3, RuleMode::Sequential, &[]);
-        let (ctx, term) = test_ctx_with_client(client);
+        let (ctx, _term) = test_ctx_with_client(client);
 
-        assert_eq!(
-            run(mb_args("bucket--usw2-az1--x-s3"), &ctx).await.unwrap(),
-            252
-        );
-        assert!(term
-            .stderr_contents()
+        let err = run(mb_args("bucket--usw2-az1--x-s3"), &ctx)
+            .await
+            .expect_err("expected error");
+        assert_eq!(err.kind, crate::error::CommandErrorKind::ParamValidation);
+        assert_eq!(err.exit_code(), 252);
+        assert!(err
+            .message
             .contains("Cannot use mb command with a directory bucket."));
     }
 
@@ -196,7 +199,7 @@ mod tests {
 
         let mut args = mb_args("bucket");
         args.tags = vec!["Key1".into(), "Value1".into()];
-        assert_eq!(run(args, &ctx).await.unwrap(), 0);
+        run(args, &ctx).await.unwrap();
         assert_eq!(term.stdout_contents(), "make_bucket: bucket");
     }
 
@@ -223,7 +226,7 @@ mod tests {
             "Key2".into(),
             "Value2".into(),
         ];
-        assert_eq!(run(args, &ctx).await.unwrap(), 0);
+        run(args, &ctx).await.unwrap();
     }
 
     #[tokio::test]
@@ -238,15 +241,12 @@ mod tests {
         });
         let (ctx, _) = test_ctx_with_client(client);
 
-        assert_eq!(
-            run(
-                mb_args("amzn-s3-demo-bucket-111122223333-us-west-2-an"),
-                &ctx
-            )
-            .await
-            .unwrap(),
-            0
-        );
+        run(
+            mb_args("amzn-s3-demo-bucket-111122223333-us-west-2-an"),
+            &ctx,
+        )
+        .await
+        .unwrap();
     }
 
     #[tokio::test]
@@ -262,12 +262,9 @@ mod tests {
         });
         let (ctx, _) = test_ctx_with_client(client);
 
-        assert_eq!(
-            run(mb_args("my-bucket-111122223333-us-east-1-an"), &ctx)
-                .await
-                .unwrap(),
-            0
-        );
+        run(mb_args("my-bucket-111122223333-us-east-1-an"), &ctx)
+            .await
+            .unwrap();
     }
 
     #[tokio::test]
@@ -280,7 +277,7 @@ mod tests {
         });
         let (ctx, _) = test_ctx_with_client(client);
 
-        assert_eq!(run(mb_args("my-regular-bucket"), &ctx).await.unwrap(), 0);
+        run(mb_args("my-regular-bucket"), &ctx).await.unwrap();
     }
 
     #[tokio::test]
@@ -295,7 +292,7 @@ mod tests {
         });
         let (ctx, _) = test_ctx_with_client(client);
 
-        assert_eq!(run(mb_args("xyz-an"), &ctx).await.unwrap(), 0);
+        run(mb_args("xyz-an"), &ctx).await.unwrap();
     }
 
     #[tokio::test]
@@ -315,6 +312,6 @@ mod tests {
 
         let mut args = mb_args("bucket");
         args.tags = vec!["Key1".into(), "Value1".into()];
-        assert_eq!(run(args, &ctx).await.unwrap(), 0);
+        run(args, &ctx).await.unwrap();
     }
 }

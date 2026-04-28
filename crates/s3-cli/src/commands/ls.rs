@@ -2,15 +2,14 @@
 
 use crate::cli::LsArgs;
 use crate::context::AppContext;
-use crate::error::{format_sdk_error, Error, Result};
-use crate::exit_code;
+use crate::error::{format_sdk_error, CommandError, Error, Result};
 use crate::format::{format_datetime_local, format_size, human_readable_size};
 use crate::termoutln;
 use crate::uri::parse_s3_uri;
 
 /// Run the `ls` command.
 #[tracing::instrument(skip(ctx), fields(s3uri = %args.s3uri, recursive = args.recursive))]
-pub async fn run(args: LsArgs, ctx: &AppContext) -> Result<i32> {
+pub async fn run(args: LsArgs, ctx: &AppContext) -> std::result::Result<(), CommandError> {
     let uri = parse_s3_uri(&args.s3uri).ok_or_else(|| Error::InvalidUri(args.s3uri.clone()))?;
     tracing::debug!(bucket = %uri.bucket, key = %uri.key, "parsed S3 URI");
 
@@ -29,10 +28,12 @@ pub async fn run(args: LsArgs, ctx: &AppContext) -> Result<i32> {
     }
 
     if !uri.key.is_empty() && state.empty_result && state.at_first_page {
-        return Ok(exit_code::FAILURE);
+        // Matches Python: no objects found under a prefix → exit code FAILURE.
+        // Empty message: the user already sees no output (nothing to print).
+        return Err(CommandError::partial_failure());
     }
 
-    Ok(0)
+    Ok(())
 }
 
 struct LsState {
@@ -273,9 +274,9 @@ mod tests {
         let client = mock_client!(aws_sdk_s3, RuleMode::Sequential, &[list_objects]);
         let (ctx, term) = test_ctx_with_client(client);
 
-        let rc = run(ls_args("s3://bucket/"), &ctx).await.unwrap();
+        let result = run(ls_args("s3://bucket/"), &ctx).await;
 
-        assert_eq!(rc, 0);
+        assert!(result.is_ok(), "run failed: {:?}", result.err());
         let expected_date = format_datetime_local(Some(&time));
         assert_eq!(
             term.stdout_contents(),
@@ -310,9 +311,9 @@ mod tests {
 
         let mut args = ls_args("s3://bucket/");
         args.recursive = true;
-        let rc = run(args, &ctx).await.unwrap();
+        let result = run(args, &ctx).await;
 
-        assert_eq!(rc, 0);
+        assert!(result.is_ok(), "run failed: {:?}", result.err());
         let expected_date = format_datetime_local(Some(&time));
         assert_eq!(
             term.stdout_contents(),
@@ -344,9 +345,9 @@ mod tests {
         let client = mock_client!(aws_sdk_s3, RuleMode::Sequential, &[list_objects]);
         let (ctx, term) = test_ctx_with_client(client);
 
-        let rc = run(ls_args("s3://bucket/photos/"), &ctx).await.unwrap();
+        let result = run(ls_args("s3://bucket/photos/"), &ctx).await;
 
-        assert_eq!(rc, 0);
+        assert!(result.is_ok(), "run failed: {:?}", result.err());
         let expected_date = format_datetime_local(Some(&time));
         assert_eq!(
             term.stdout_contents(),
@@ -366,9 +367,9 @@ mod tests {
 
         let mut args = ls_args("s3://bucket/");
         args.page_size = Some(8);
-        let rc = run(args, &ctx).await.unwrap();
+        let result = run(args, &ctx).await;
 
-        assert_eq!(rc, 0);
+        assert!(result.is_ok(), "run failed: {:?}", result.err());
     }
 
     #[tokio::test]
@@ -385,9 +386,9 @@ mod tests {
 
         let mut args = ls_args("s3://bucket/");
         args.request_payer = Some("requester".to_string());
-        let rc = run(args, &ctx).await.unwrap();
+        let result = run(args, &ctx).await;
 
-        assert_eq!(rc, 0);
+        assert!(result.is_ok(), "run failed: {:?}", result.err());
     }
 
     #[tokio::test]
@@ -408,9 +409,9 @@ mod tests {
         let client = mock_client!(aws_sdk_s3, RuleMode::Sequential, &[list_buckets]);
         let (ctx, term) = test_ctx_with_client(client);
 
-        let rc = run(ls_args("s3://"), &ctx).await.unwrap();
+        let result = run(ls_args("s3://"), &ctx).await;
 
-        assert_eq!(rc, 0);
+        assert!(result.is_ok(), "run failed: {:?}", result.err());
         let expected_date = format_datetime_local(Some(&time));
         assert_eq!(term.stdout_contents(), format!("{expected_date} my-bucket"));
     }
@@ -427,9 +428,9 @@ mod tests {
 
         let mut args = ls_args("s3://");
         args.page_size = Some(8);
-        let rc = run(args, &ctx).await.unwrap();
+        let result = run(args, &ctx).await;
 
-        assert_eq!(rc, 0);
+        assert!(result.is_ok(), "run failed: {:?}", result.err());
     }
 
     #[tokio::test]
@@ -443,9 +444,9 @@ mod tests {
 
         let mut args = ls_args("s3://");
         args.bucket_name_prefix = Some("my-".to_string());
-        let rc = run(args, &ctx).await.unwrap();
+        let result = run(args, &ctx).await;
 
-        assert_eq!(rc, 0);
+        assert!(result.is_ok(), "run failed: {:?}", result.err());
     }
 
     #[tokio::test]
@@ -459,9 +460,9 @@ mod tests {
 
         let mut args = ls_args("s3://");
         args.bucket_region = Some("us-west-1".to_string());
-        let rc = run(args, &ctx).await.unwrap();
+        let result = run(args, &ctx).await;
 
-        assert_eq!(rc, 0);
+        assert!(result.is_ok(), "run failed: {:?}", result.err());
     }
 
     #[tokio::test]
@@ -473,9 +474,11 @@ mod tests {
         let client = mock_client!(aws_sdk_s3, RuleMode::Sequential, &[list_objects]);
         let (ctx, _term) = test_ctx_with_client(client);
 
-        let rc = run(ls_args("s3://bucket/nonexistent"), &ctx).await.unwrap();
+        let result = run(ls_args("s3://bucket/nonexistent"), &ctx).await;
 
-        assert_eq!(rc, 1);
+        let err = result.expect_err("expected error");
+        assert_eq!(err.kind, crate::error::CommandErrorKind::Failure);
+        assert_eq!(err.exit_code(), 1);
     }
 
     #[tokio::test]
@@ -487,9 +490,9 @@ mod tests {
         let client = mock_client!(aws_sdk_s3, RuleMode::Sequential, &[list_objects]);
         let (ctx, _term) = test_ctx_with_client(client);
 
-        let rc = run(ls_args("s3://bucket"), &ctx).await.unwrap();
+        let result = run(ls_args("s3://bucket"), &ctx).await;
 
-        assert_eq!(rc, 0);
+        assert!(result.is_ok(), "run failed: {:?}", result.err());
     }
 
     #[tokio::test]
@@ -519,9 +522,9 @@ mod tests {
 
         let mut args = ls_args("s3://bucket/");
         args.summarize = true;
-        let rc = run(args, &ctx).await.unwrap();
+        let result = run(args, &ctx).await;
 
-        assert_eq!(rc, 0);
+        assert!(result.is_ok(), "run failed: {:?}", result.err());
         let output = term.stdout_contents();
         assert!(output.contains("Total Objects: 2"), "got: {output}");
         assert!(output.contains("Total Size: 300"), "got: {output}");
@@ -548,9 +551,9 @@ mod tests {
         let mut args = ls_args("s3://bucket/");
         args.summarize = true;
         args.human_readable = true;
-        let rc = run(args, &ctx).await.unwrap();
+        let result = run(args, &ctx).await;
 
-        assert_eq!(rc, 0);
+        assert!(result.is_ok(), "run failed: {:?}", result.err());
         let output = term.stdout_contents();
         assert!(output.contains("Total Objects: 1"), "got: {output}");
         assert!(output.contains("Total Size: 1.0 MiB"), "got: {output}");
@@ -571,9 +574,9 @@ mod tests {
         let mut args = ls_args("s3://bucket/");
         args.page_size = Some(8);
         args.recursive = true;
-        let rc = run(args, &ctx).await.unwrap();
+        let result = run(args, &ctx).await;
 
-        assert_eq!(rc, 0);
+        assert!(result.is_ok(), "run failed: {:?}", result.err());
     }
 
     #[tokio::test]
@@ -598,9 +601,9 @@ mod tests {
         let client = mock_client!(aws_sdk_s3, RuleMode::Sequential, &[list_objects]);
         let (ctx, term) = test_ctx_with_client(client);
 
-        let rc = run(ls_args("s3://bucket/prefix"), &ctx).await.unwrap();
+        let result = run(ls_args("s3://bucket/prefix"), &ctx).await;
 
-        assert_eq!(rc, 0);
+        assert!(result.is_ok(), "run failed: {:?}", result.err());
         let output = term.stdout_contents();
         assert!(output.contains("PRE dir/"), "missing prefix: {output}");
         assert!(output.contains("file.txt"), "missing object: {output}");
@@ -620,9 +623,9 @@ mod tests {
         let client = mock_client!(aws_sdk_s3, RuleMode::Sequential, &[list_objects]);
         let (ctx, term) = test_ctx_with_client(client);
 
-        let rc = run(ls_args("s3://bucket/prefix"), &ctx).await.unwrap();
+        let result = run(ls_args("s3://bucket/prefix"), &ctx).await;
 
-        assert_eq!(rc, 0);
+        assert!(result.is_ok(), "run failed: {:?}", result.err());
         assert!(
             term.stdout_contents().contains("PRE subdir/"),
             "missing prefix: {}",
@@ -658,9 +661,9 @@ mod tests {
         let client = mock_client!(aws_sdk_s3, RuleMode::Sequential, &[page1, page2]);
         let (ctx, term) = test_ctx_with_client(client);
 
-        let rc = run(ls_args("s3://bucket/foo"), &ctx).await.unwrap();
+        let result = run(ls_args("s3://bucket/foo"), &ctx).await;
 
-        assert_eq!(rc, 0);
+        assert!(result.is_ok(), "run failed: {:?}", result.err());
         let output = term.stdout_contents();
         assert!(output.contains("PRE sub/"), "missing prefix: {output}");
         assert!(output.contains("bar.txt"), "missing object: {output}");
@@ -702,9 +705,9 @@ mod tests {
 
         let mut args = ls_args("s3://bucket/");
         args.summarize = true;
-        let rc = run(args, &ctx).await.unwrap();
+        let result = run(args, &ctx).await;
 
-        assert_eq!(rc, 0);
+        assert!(result.is_ok(), "run failed: {:?}", result.err());
         let output = term.stdout_contents();
         assert!(output.contains("file0.txt"), "missing file0: {output}");
         assert!(output.contains("file3.txt"), "missing file3: {output}");
@@ -757,9 +760,9 @@ mod tests {
         let client = mock_client!(aws_sdk_s3, RuleMode::Sequential, &[page1, page2, page3]);
         let (ctx, term) = test_ctx_with_client(client);
 
-        let rc = run(ls_args("s3://"), &ctx).await.unwrap();
+        let result = run(ls_args("s3://"), &ctx).await;
 
-        assert_eq!(rc, 0);
+        assert!(result.is_ok(), "run failed: {:?}", result.err());
         let output = term.stdout_contents();
         assert!(output.contains("bucket-a"), "missing bucket-a: {output}");
         assert!(output.contains("bucket-b"), "missing bucket-b: {output}");
@@ -781,9 +784,9 @@ mod tests {
 
         let mut args = ls_args("s3://mybucket/");
         args.bucket_name_prefix = Some("ignored".to_string());
-        let rc = run(args, &ctx).await.unwrap();
+        let result = run(args, &ctx).await;
 
-        assert_eq!(rc, 0);
+        assert!(result.is_ok(), "run failed: {:?}", result.err());
     }
 
     #[tokio::test]
@@ -798,9 +801,9 @@ mod tests {
 
         let mut args = ls_args("s3://mybucket/");
         args.bucket_region = Some("us-west-1".to_string());
-        let rc = run(args, &ctx).await.unwrap();
+        let result = run(args, &ctx).await;
 
-        assert_eq!(rc, 0);
+        assert!(result.is_ok(), "run failed: {:?}", result.err());
     }
 
     #[tokio::test]
@@ -819,16 +822,13 @@ mod tests {
         let (ctx, _) = test_ctx_with_client(client);
 
         let result = run(ls_args("s3://nosuchbucket/"), &ctx).await;
-        let err = result.unwrap_err();
-        match err {
-            crate::error::Error::SdkService(msg) => {
-                assert_eq!(
-                    msg,
-                    "An error occurred (NoSuchBucket) when calling the ListObjectsV2 operation: The specified bucket does not exist"
-                );
-            }
-            other => panic!("expected SdkService error, got: {other:?}"),
-        }
+        let err = result.expect_err("expected error");
+        assert_eq!(err.kind, crate::error::CommandErrorKind::Client);
+        assert_eq!(
+            err.message,
+            "An error occurred (NoSuchBucket) when calling the ListObjectsV2 operation: The specified bucket does not exist"
+        );
+        assert_eq!(err.exit_code(), 254);
     }
 
     // display_page — unit tests for formatting
