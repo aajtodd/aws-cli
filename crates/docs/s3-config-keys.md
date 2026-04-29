@@ -158,7 +158,7 @@ in their config because they ran 8x `aws s3 cp` in parallel shouldn't
 have that value silently ignored.
 
 When we build an explicit fleet-mode (opt-in `--fleet-size N` or
-similar — see bosun.md §Multi-process, Machine Safety, and CRT Lessons),
+similar — see the multi-process design thread for details),
 these keys remain the user-facing surface.
 
 ## Priority for wiring

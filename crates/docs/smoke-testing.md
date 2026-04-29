@@ -158,8 +158,8 @@ AWS_PROFILE=your-profile ./target/debug/aws \
 When you land a change that needs smoke verification:
 
 1. Add the recipe here with the expected outcome.
-2. Reference the recipe from the relevant entry in `compat.md`,
-   `bosun.md`, or the PR description.
+2. Reference the recipe from the relevant entry in `compat.md`
+   or the PR description.
 3. Recipes that become automatable migrate to the compat framework
    (`s3-compat-tests`) or to Rust integration tests. This doc is for
    the things that genuinely need a real endpoint or real credentials.

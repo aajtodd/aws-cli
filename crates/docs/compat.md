@@ -191,7 +191,7 @@ silently works for listing and silently fails for transfers — a
 compat/security gap worse than a clean rejection.
 
 **Status:** Tracked; not yet resolved. Two upstream gaps, both captured
-in bosun.md "Upstream Contributions":
+in the upstream contributions tracker:
 
 1. `aws-sdk-s3-transfer-manager`: add `S3ClientConfig::with_tls_context(...)`
    (or a more general per-HTTP-client customization hook) so TM's
@@ -287,8 +287,7 @@ emerges that requires interactive prompting, revisit.
 
 **Audit status:** Completed 2026-04-29. Source-level comparison of
 `botocore/credentials.py` vs `aws-config/src/default_provider/credentials.rs`
-and sibling modules. Summary below; see bosun.md "Batch E audits" for full
-source references.
+and sibling modules. Summary below.
 
 ### Verified matches
 
@@ -525,7 +524,7 @@ to discover the region, caches it, and retries. Reference:
 
 1. **Cross-region redirect interceptor** — high priority ship-gate work.
    Design and implement in our CLI layer wrapping the SDK client.
-   Tracked as architectural work in bosun.md Batch D.
+   Tracked as architectural work (cross-region redirect interceptor).
 2. **Integration tests** for `AWS_ENDPOINT_URL_S3`, `--endpoint-url`
    priority chain, `use_arn_region` from profile. Cover via compat
    framework specs.
@@ -680,4 +679,4 @@ Per-key priority in `crates/docs/s3-config-keys.md`. Wiring order:
 - `test_can_support_addressing_mode_config` (presign) — `addressing_style`
 - Various cp/sync tests that implicitly depend on default addressing
 
-Marked as FIXME in `main.rs` `build_context()`.
+Not yet wired into `build_context()`.
