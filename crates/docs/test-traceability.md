@@ -190,6 +190,27 @@ Status key:
 | `test_kms_sigv4_error_message` | — | ➖ Handled differently in Rust SDK |
 | `test_error_message_not_enhanced` | — | ❌ |
 
+## unit/customizations/test_globalargs.py
+
+Python test file is the authoritative reference for each global flag's
+behavior (value parsing, handler registration, precedence). Our wiring
+lives in `main.rs::build_context` and `config.rs`; parser tests live in
+`cli::tests::globals_*`.
+
+| Python Test | Rust Equivalent | Status |
+|-------------|-----------------|--------|
+| `test_no_sign_request_if_option_specified` | `main.rs::build_context` → `ConfigLoader::no_credentials()` | ✅ (wiring; SDK effect smoke-tested against public bucket, see `smoke-testing.md`) |
+| `test_request_signed_by_default` | Default `GlobalArgs` does not set `no_credentials()` | ✅ |
+| `test_cli_read_timeout` | `config::tests::timeout_config_set_both` | ✅ |
+| `test_cli_connect_timeout` | `config::tests::timeout_config_set_both` | ✅ |
+| `test_cli_read_timeout_for_blocking` | `config::tests::timeout_config_zero_means_disabled` | ✅ |
+| `test_cli_connect_timeout_for_blocking` | `config::tests::timeout_config_zero_means_disabled` | ✅ |
+| `test_parse_verify_ssl_default_value` | `cli::tests::globals_default_values` | ✅ (parser only) |
+| `test_parse_verify_ssl_verify_turned_off` | — | ❌ (flag rejected at arg-parse) |
+| `test_cli_overrides_cert_bundle` | — | ❌ (flag rejected at arg-parse) |
+| `test_cli_overrides_env_cert_bundle` | — | ❌ (flag rejected at arg-parse) |
+| `test_no_verify_ssl_overrides_cli_cert_bundle` | — | ❌ (both flags rejected at arg-parse) |
+
 ## Rust-only tests (no Python equivalent)
 
 These test Rust-specific concerns or expand coverage beyond the Python suite.
@@ -204,8 +225,12 @@ These test Rust-specific concerns or expand coverage beyond the Python suite.
 | `format::tests::format_datetime_*` (4 tests) | Date formatting correctness |
 | `format::tests::format_size_*` (2 tests) | Size field alignment |
 | `format::tests::human_readable_zero` | Edge case: 0 bytes |
-| `term::test_support::tests::*` (9 tests) | InMemoryTerminal correctness |
+| `term::test_util::tests::*` (9 tests) | InMemoryTerminal correctness |
 | `ls::tests::display_page_*` (5 tests) | Output formatting with known SDK types |
+| `paths::tests::*` (11 tests) | Relative-path formatting (matches `awscli/customizations/s3/utils.py::relative_path`) |
+| `config::tests::http_client_builds_default` | `build_http_client` produces a usable HTTP client |
+| `config::tests::timeout_config_*` (5 tests) | `--cli-read-timeout` / `--cli-connect-timeout` wiring, including Python's `0 = disabled` semantic |
+| `config::tests::ca_bundle_*` (6 tests, `#[ignore]`) | `build_ca_bundle_tls_context` error paths + valid PEM — kept ignored while `--ca-bundle` rejects at arg-parse |
 
 ## Exit codes
 
@@ -224,7 +249,8 @@ Source: `awscli/constants.py`
 ## Known behavioral gaps
 
 These are differences between the Python CLI and our implementation that
-need resolution. Each should have a corresponding test when fixed.
+need resolution. Each should have a corresponding test when fixed. See
+`compat.md` for design-level detail and resolution paths.
 
 | Gap | Impact | Python Behavior | Our Behavior |
 |-----|--------|-----------------|--------------|
@@ -232,4 +258,10 @@ need resolution. Each should have a corresponding test when fixed.
 | `--request-payer` without value | ls | Defaults to "requester" | Requires explicit value |
 | Access point ARN parsing | URI parsing | Handles ARN formats | Only handles s3://bucket/key |
 | Error message for 301 redirect | Error output | Enhanced with endpoint info | Raw error |
-| `--no-verify-ssl` wiring | SDK config | Applied to SDK client | Parsed but not applied |
+| `--no-verify-ssl` | SDK config | Disables TLS verification | Rejected at arg-parse (smithy-rs has no public toggle) |
+| `--ca-bundle` | SDK config | Replaces system trust store | Rejected at arg-parse (TM per-thread HTTP clients have no TlsContext hook; rejecting is preferable to honoring on ls but not cp) |
+| `--cli-read-timeout` semantics | Timeouts | Per-socket-read | Time-to-first-byte from request start |
+| `--debug` output format | Log output | stdlib `logging` format | `tracing_subscriber::fmt` default (ANSI, ISO-8601) |
+| `--cli-auto-prompt` / `--no-cli-auto-prompt` | Missing-arg handling | Interactive prompt loop before dispatch | Parsed but ignored (no interactive prompting) |
+| S3-specific config keys | `~/.aws/config [s3]` + `AWS_S3_*` | botocore parses and applies | aws-config does not parse; we have not wired |
+| User agent format | All requests | Custom CLI format with feature tags | SDK default (audit pending) |

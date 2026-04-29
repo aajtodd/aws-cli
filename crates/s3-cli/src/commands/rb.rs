@@ -88,7 +88,7 @@ async fn force_delete_objects(ctx: &AppContext, bucket: &str) -> std::result::Re
 mod tests {
     use super::*;
     use crate::cli::RbArgs;
-    use crate::term::test_support::InMemoryTerminal;
+    use crate::term::test_util::InMemoryTerminal;
     use crate::uri::{S3Uri, TransferUri};
     use aws_sdk_s3::operation::delete_bucket::DeleteBucketOutput;
     use aws_sdk_s3::operation::delete_object::DeleteObjectOutput;
@@ -99,11 +99,7 @@ mod tests {
 
     fn test_ctx_with_client(client: aws_sdk_s3::Client) -> (AppContext, InMemoryTerminal) {
         let term = InMemoryTerminal::new(24, 80);
-        let ctx = AppContext {
-            client,
-            globals: crate::cli::GlobalArgs::default(),
-            term: Box::new(term.clone()),
-        };
+        let ctx = crate::context::test_util::app_context(client, term.clone());
         (ctx, term)
     }
 

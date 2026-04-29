@@ -140,7 +140,7 @@ impl TermOutput for StdErr {
 // ---------------------------------------------------------------------------
 
 #[cfg(test)]
-pub mod test_support {
+pub mod test_util {
     use super::*;
     use std::sync::{Arc, Mutex};
 

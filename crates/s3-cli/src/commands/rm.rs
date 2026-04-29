@@ -137,7 +137,7 @@ async fn delete_recursive(
 mod tests {
     use super::*;
     use crate::cli::RmArgs;
-    use crate::term::test_support::InMemoryTerminal;
+    use crate::term::test_util::InMemoryTerminal;
     use crate::uri::{S3Uri, TransferUri};
     use aws_sdk_s3::operation::delete_object::DeleteObjectOutput;
     use aws_sdk_s3::operation::list_objects_v2::ListObjectsV2Output;
@@ -146,11 +146,7 @@ mod tests {
 
     fn test_ctx_with_client(client: aws_sdk_s3::Client) -> (AppContext, InMemoryTerminal) {
         let term = InMemoryTerminal::new(24, 80);
-        let ctx = AppContext {
-            client,
-            globals: crate::cli::GlobalArgs::default(),
-            term: Box::new(term.clone()),
-        };
+        let ctx = crate::context::test_util::app_context(client, term.clone());
         (ctx, term)
     }
 

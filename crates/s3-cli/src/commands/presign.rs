@@ -58,7 +58,7 @@ pub async fn run(args: PresignArgs, ctx: &AppContext) -> std::result::Result<(),
 mod tests {
     use super::*;
     use crate::cli::PresignArgs;
-    use crate::term::test_support::InMemoryTerminal;
+    use crate::term::test_util::InMemoryTerminal;
     use aws_credential_types::Credentials;
     use aws_smithy_async::time::StaticTimeSource;
 
@@ -77,11 +77,7 @@ mod tests {
         let client = aws_sdk_s3::Client::from_conf(config);
         // Wide terminal so presigned URLs don't wrap.
         let term = InMemoryTerminal::new(24, 2000);
-        let ctx = AppContext {
-            client,
-            globals: crate::cli::GlobalArgs::default(),
-            term: Box::new(term.clone()),
-        };
+        let ctx = crate::context::test_util::app_context(client, term.clone());
         (ctx, term)
     }
 

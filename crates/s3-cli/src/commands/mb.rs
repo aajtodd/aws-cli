@@ -80,7 +80,7 @@ pub async fn run(args: MbArgs, ctx: &AppContext) -> std::result::Result<(), Comm
 mod tests {
     use super::*;
     use crate::cli::MbArgs;
-    use crate::term::test_support::InMemoryTerminal;
+    use crate::term::test_util::InMemoryTerminal;
     use crate::uri::{S3Uri, TransferUri};
     use aws_sdk_s3::operation::create_bucket::CreateBucketOutput;
     use aws_smithy_mocks::{mock, mock_client, RuleMode};
@@ -88,11 +88,7 @@ mod tests {
 
     fn test_ctx_with_client(client: aws_sdk_s3::Client) -> (AppContext, InMemoryTerminal) {
         let term = InMemoryTerminal::new(24, 80);
-        let ctx = AppContext {
-            client,
-            globals: crate::cli::GlobalArgs::default(),
-            term: Box::new(term.clone()),
-        };
+        let ctx = crate::context::test_util::app_context(client, term.clone());
         (ctx, term)
     }
 

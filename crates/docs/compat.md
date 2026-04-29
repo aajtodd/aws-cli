@@ -107,15 +107,149 @@ cp.
 **Rust implementation:** `TransferUri` does not have a Stdio variant.
 Not yet implemented.
 
-## `--no-verify-ssl` Wiring
+## `--no-verify-ssl`
 
 **Impact:** All commands when SSL verification is disabled.
 
-**Python CLI behavior:** Disables SSL certificate verification on the
-HTTP client.
+**Python CLI behavior:** Disables SSL certificate verification on the HTTP
+client. Takes precedence over `--ca-bundle` and `AWS_CA_BUNDLE`.
+(`awscli/customizations/globalargs.py:resolve_verify_ssl`,
+`tests/unit/customizations/test_globalargs.py` `test_no_verify_ssl_overrides_cli_cert_bundle`.)
 
-**Rust implementation:** Parsed as a global flag but not applied to the
-SDK client configuration.
+**Rust implementation:** Currently rejected at argument-parse time with
+exit 252. `aws-smithy-http-client` provides no public API to disable TLS
+certificate verification — no `dangerous`/`no_verify`/`ServerCertVerifier`
+hook on `TlsContext` or the rustls provider (verified against
+`rust-runtime/aws-smithy-http-client/src/client/tls/` at the pinned
+behavior version). Silently accepting the flag would create a false
+sense of security; the user should know their verification choice had
+no effect.
+
+**Status:** Tracked; not yet resolved.
+
+**Candidate path to resolution:** Expose a verification toggle on
+`TrustStore` (or a new `TlsContextBuilder::with_certificate_verification(bool)`)
+upstream in smithy-rs. Once available, swap the rejection for a custom
+TLS context with verification disabled, matching Python's behavior. No
+CLI API change; only the internal wiring flips from reject to honor.
+
+## `--ca-bundle`
+
+**Impact:** All commands. Users pointing the CLI at a custom CA bundle
+(enterprise proxies, testing against local endpoints with self-signed
+certs, etc.).
+
+**Python CLI behavior:** urllib3 uses the provided PEM as the sole trust
+anchor. Applies uniformly to every request across every command.
+
+**Rust implementation:** Currently rejected at argument-parse time with
+exit 252.
+
+**Why rejected rather than partially supported:** there's a bifurcation
+in how commands reach S3:
+- `ls`, `mb`, `rb`, `rm`, `presign`, `website` use a single
+  `aws_sdk_s3::Client` whose HTTP transport we control directly via
+  `build_http_client` — here a `--ca-bundle` could be honored
+  straightforwardly.
+- `cp`, `mv`, `sync` go through the Rust Transfer Manager. TM's managed
+  runtime builds per-thread `aws_smithy_http_client::Builder` instances
+  inside `runtime/managed.rs:215` with no hook today for threading a
+  caller-supplied `TlsContext` through.
+
+Honoring `--ca-bundle` only on the non-TM path would mean the flag
+silently works for listing and silently fails for transfers — a
+compat/security gap worse than a clean rejection.
+
+**Status:** Tracked; not yet resolved. Two upstream gaps, both captured
+in bosun.md "Upstream Contributions":
+
+1. `aws-sdk-s3-transfer-manager`: add `S3ClientConfig::with_tls_context(...)`
+   (or a more general per-HTTP-client customization hook) so TM's
+   managed runtime threads the caller's TLS context into every
+   per-thread HTTP client.
+2. `aws-smithy-http-client`: non-panicking `TrustStore` validation so
+   malformed PEMs surface as structured errors rather than panics on
+   a tokio worker thread.
+
+**Resolution sequence:**
+1. Upstream TM exposes `with_tls_context` (or equivalent).
+2. Upstream smithy-rs exposes a non-panicking PEM validation path.
+3. CLI refactors `build_context` to return the `aws_sdk_s3::config::Builder`
+   alongside the built client; `cp.rs::build_tm` switches from
+   `.client(...)` to `.s3_config(...)` with our TLS context threaded
+   through.
+4. Rejection in `main.rs` lifts; `build_http_client` gains the
+   `TrustStore::empty().with_pem_certificate(pem)` branch back.
+
+## `--cli-read-timeout` Semantics
+
+**Impact:** `--cli-read-timeout` users expecting per-socket-read semantics.
+
+**Python CLI behavior:** `read_timeout` is applied per-socket-read — the
+time between successive chunks of data arriving on an established connection.
+A 60-second read timeout on a 5-minute download succeeds as long as no
+individual read stalls for more than 60 seconds.
+
+**Rust SDK behavior:** `TimeoutConfig::read_timeout` is time-to-first-byte
+from request initiation, not per-chunk. A long-running download whose
+server takes more than the configured timeout to start responding fails,
+but once streaming begins, the timeout no longer applies per-chunk.
+
+**Status:** Tracked; may become obsolete as the Rust SDK's timeout model
+evolves. No action needed now.
+
+## `--debug` Output Format
+
+**Impact:** Users scraping debug output expecting Python's format.
+
+**Python CLI behavior:** `_set_logging` installs a stdlib `logging` handler
+on `botocore`, `awscli`, `s3transfer`, `urllib3` at DEBUG. Format string
+is defined by `LOG_FORMAT` in `awscli/clidriver.py`; output includes
+log level, timestamp, logger name, and message.
+
+**Rust implementation:** `--debug` installs `tracing_subscriber::fmt()` at
+DEBUG writing to stderr. Format is tracing's default (ANSI colors,
+ISO-8601 timestamps, span context). Captures equivalent information but
+layout differs.
+
+**Status:** Tracked as open question. Is format-level parity worth the
+engineering cost? Nothing user-facing should depend on debug output
+format, but tooling may. No action now; revisit if users complain.
+
+## CLI Output / Formatting Flags (s3 No-Ops)
+
+**Impact:** Users passing these flags to `aws s3 <cmd>`.
+
+**Context:** These flags control output formatting, pagination, binary
+input encoding, pager behavior, interactive prompting, and error
+formatting at the CLI driver level. Python's `aws s3` commands do not
+honor any of them on output — `aws s3 ls` help explicitly states
+"`--output` and `--no-paginate` arguments are ignored for this command,"
+and all s3 output is hand-formatted text written directly to stdout.
+
+**Python CLI behavior on `aws s3`:**
+
+| Flag | Behavior |
+|------|----------|
+| `--output {json,text,table,yaml,yaml-stream,off}` | Ignored; s3 emits hand-formatted text |
+| `--query <jmespath>` | Ignored; s3 output isn't structured |
+| `--no-paginate` | Ignored on ls; transfer commands self-paginate |
+| `--no-cli-pager` | Effective no-op; s3 writes directly to stdout |
+| `--cli-binary-format {base64,raw-in-base64-out}` | Applies to blob CLI inputs; s3 takes none |
+| `--cli-error-format {legacy,json,yaml,text,table,enhanced}` | Applies to SDK error formatting; s3 formats errors via botocore's `ClientError.MSG_TEMPLATE` directly |
+| `--cli-auto-prompt` / `--no-cli-auto-prompt` | Prompts interactively for missing args before dispatch |
+
+**Rust implementation:** All seven flags are parsed by clap (required
+for cli.json coverage) and ignored. No runtime effect. Matches Python's
+behavior on s3 for six of seven.
+
+**Divergence:** `--cli-auto-prompt` is the only genuine behavior
+difference — Python drops into an interactive prompt loop for missing
+args before dispatching the subcommand; we do nothing. Low-impact on
+s3 because s3 subcommand args are simple and positional. If a spec
+emerges that requires interactive prompting, revisit.
+
+**Status:** Documented as intentional no-op. No code change needed.
 
 ## Credential Resolution and Profiles
 

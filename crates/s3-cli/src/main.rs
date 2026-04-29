@@ -25,6 +25,31 @@ fn main() -> ExitCode {
         }
     };
 
+    // TODO: remove when aws-smithy-http-client exposes a TLS verification
+    // toggle (e.g. TrustStore::with_certificate_verification(bool)).
+    if cli.globals.no_verify_ssl {
+        eprintln!(
+            "\n--no-verify-ssl is not currently supported. TLS certificate \
+             verification cannot be disabled in this build. See \
+             crates/docs/compat.md for status."
+        );
+        return ExitCode::from(s3_cli::exit_code::PARAM_VALIDATION_ERROR as u8);
+    }
+
+    // TODO: remove when TM exposes `S3ClientConfig::with_tls_context(...)`
+    // or equivalent so --ca-bundle applies uniformly to cp/sync.
+    if cli.globals.ca_bundle.is_some() {
+        eprintln!(
+            "\n--ca-bundle is not currently supported. See \
+             crates/docs/compat.md for status."
+        );
+        return ExitCode::from(s3_cli::exit_code::PARAM_VALIDATION_ERROR as u8);
+    }
+
+    // Install the tracing subscriber before the runtime starts so SDK
+    // config-time logs are captured.
+    install_tracing(&cli.globals);
+
     let Service::S3 { command } = cli.service;
 
     let rt = tokio::runtime::Builder::new_multi_thread()
@@ -40,13 +65,62 @@ fn main() -> ExitCode {
     })
 }
 
-/// Build an [`AppContext`] from parsed global flags.
+/// Install a `tracing_subscriber::fmt` logger writing to stderr when
+/// `--debug` is set. Silent when absent.
 ///
-/// Applies `--region`, `--endpoint-url`, `--profile`, `--no-verify-ssl`,
-/// etc. to the SDK configuration before constructing the S3 client.
+/// `RUST_LOG` takes precedence if set. Default filter enables DEBUG for
+/// the Rust equivalents of Python's `botocore`/`awscli`/`s3transfer`/
+/// `urllib3` loggers.
+fn install_tracing(globals: &GlobalArgs) {
+    if !globals.debug {
+        return;
+    }
+    use tracing_subscriber::{fmt, EnvFilter};
+
+    // Target mapping (Python logger → Rust target prefix):
+    //   botocore  → aws_config, aws_runtime, aws_sdk_*, aws_smithy_*
+    //   awscli    → s3_cli
+    //   s3transfer → aws_sdk_s3_transfer_manager (crate name) plus
+    //                `aws_s3_transfer_manager::*` (custom targets in
+    //                telemetry.rs)
+    //   urllib3   → hyper, h2
+    // Signing paths (`aws_sigv4`, `aws_runtime::auth`) are elevated to
+    // TRACE so canonical request + string-to-sign appear — these match
+    // Python's `botocore.auth` DEBUG output.
+    const DEFAULT_FILTER: &str = "\
+        off,\
+        s3_cli=debug,\
+        aws_config=debug,\
+        aws_runtime=debug,\
+        aws_runtime::auth=trace,\
+        aws_sdk_s3=debug,\
+        aws_sdk_sts=debug,\
+        aws_sigv4=trace,\
+        aws_smithy_runtime=debug,\
+        aws_smithy_runtime_api=debug,\
+        aws_smithy_http_client=debug,\
+        aws_sdk_s3_transfer_manager=debug,\
+        aws_s3_transfer_manager=debug,\
+        hyper=debug,\
+        h2=debug\
+    ";
+
+    let filter =
+        EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(DEFAULT_FILTER));
+
+    fmt()
+        .with_env_filter(filter)
+        .with_writer(std::io::stderr)
+        .with_target(true)
+        .init();
+}
+
+/// Build an [`AppContext`] by translating global flags into SDK
+/// configuration and constructing the S3 client.
 async fn build_context(globals: &GlobalArgs) -> AppContext {
-    // TODO - need to pin behavior version
-    let mut config_loader = aws_config::defaults(aws_config::BehaviorVersion::latest());
+    // Pin BehaviorVersion rather than `latest()` to lock the compat
+    // surface. Bump deliberately.
+    let mut config_loader = aws_config::defaults(aws_config::BehaviorVersion::v2026_01_12());
 
     if let Some(ref region) = globals.region {
         config_loader = config_loader.region(aws_config::Region::new(region.clone()));
@@ -58,23 +132,22 @@ async fn build_context(globals: &GlobalArgs) -> AppContext {
         config_loader = config_loader.profile_name(profile);
     }
 
-    let config = config_loader.load().await;
+    if globals.no_sign_request {
+        config_loader = config_loader.no_credentials();
+    }
 
-    // FIXME(compat): aws-config does not parse S3-specific config keys.
-    // Python's botocore reads these from `~/.aws/config` `[s3]` section and
-    // `AWS_S3_*` env vars; we need to read them ourselves and apply to the
-    // S3 Config builder. Affects:
-    //   - addressing_style (path/virtual/auto) → force_path_style
-    //   - use_arn_region → use_arn_region
-    //   - us_east_1_regional_endpoint → (endpoint resolution)
-    //   - use_accelerate_endpoint → accelerate
-    //   - use_dualstack_endpoint → use_dualstack_endpoint
-    //   - signature_version → (sigv4/sigv4a selection)
-    //   - payload_signing_enabled
-    //   - s3_disable_multiregion_access_points
-    // See docs/compat.md for the full list and Python test coverage.
-    let client = aws_sdk_s3::Client::new(&config);
-    AppContext::new(client, globals.clone())
+    let http_client = s3_cli::config::build_http_client(globals);
+    config_loader = config_loader
+        .http_client(http_client)
+        .timeout_config(s3_cli::config::build_timeout_config(globals));
+
+    let sdk_config = config_loader.load().await;
+
+    // TODO: apply S3-specific config keys (`[s3]` section / `AWS_S3_*`
+    // env vars) to the S3 Config builder. See compat.md §S3-Specific
+    // Config Keys.
+    let client = aws_sdk_s3::Client::new(&sdk_config);
+    AppContext::new(client, sdk_config, globals.clone())
 }
 
 /// Reset SIGPIPE to default behavior so piping to `head`, `less`, etc.
