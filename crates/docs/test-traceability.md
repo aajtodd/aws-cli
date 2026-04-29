@@ -263,5 +263,13 @@ need resolution. Each should have a corresponding test when fixed. See
 | `--cli-read-timeout` semantics | Timeouts | Per-socket-read | Time-to-first-byte from request start |
 | `--debug` output format | Log output | stdlib `logging` format | `tracing_subscriber::fmt` default (ANSI, ISO-8601) |
 | `--cli-auto-prompt` / `--no-cli-auto-prompt` | Missing-arg handling | Interactive prompt loop before dispatch | Parsed but ignored (no interactive prompting) |
+| IMDSv1 fallback | EC2 credential resolution | Supports both IMDSv1 and IMDSv2 | IMDSv2-only (`imds/client.rs` comment) |
+| MFA prompting for assume-role | Profiles with `mfa_serial` | Interactive `getpass` prompt | No MFA support at all — profile fails |
+| `AWS_DEFAULT_PROFILE` env var | Profile selection | Honored as fallback for `AWS_PROFILE` | Not honored |
+| `AWS_SECURITY_TOKEN` (legacy) | Credentials | Honored as fallback for `AWS_SESSION_TOKEN` | Not honored |
+| `AWS_CREDENTIAL_EXPIRATION` | Static creds with expiry | Honored | Not honored |
+| SSO / credential_process feature gating | Profiles using these | Always available | Require `sso` / `credentials-process` cargo features |
+| STS assume-role disk cache | Repeated invocations | JSONFileCache on disk | In-memory only |
 | S3-specific config keys | `~/.aws/config [s3]` + `AWS_S3_*` | botocore parses and applies | aws-config does not parse; we have not wired |
+| `payload_signing_enabled = true` | Upload operations | Honors explicit `true` — forces payload signing | TM unconditionally disables; no config hook to re-enable |
 | User agent format | All requests | Custom CLI format with feature tags | SDK default (audit pending) |

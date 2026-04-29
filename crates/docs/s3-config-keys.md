@@ -70,6 +70,42 @@ All keys live in the `[profile NAME]` or `[default]` section's nested
 level; botocore merges). Env-var column lists the canonical env-var
 override if one exists.
 
+## Mechanism: how we read these in Rust
+
+Important discovery from auditing `aws-config`'s profile parser:
+
+1. **`aws_config::profile::parser::load()`** returns `ProfileSet`. Each
+   `Profile` exposes `get(key) -> Option<&str>` for **top-level** profile keys.
+
+2. **Sub-properties are NOT structured.** The parser recognizes
+   `[s3]`-style sub-sections syntactically (indented `key = value`
+   lines under a parent key) but stores the entire sub-section as the
+   raw multi-line string value of the parent key. Quote from parser
+   source (`aws-runtime/src/env_config/parse.rs`): *"Sub-properties
+   must be validated for compatibility with other SDKs, but they are
+   not actually parsed into structured data."*
+
+3. **`aws-config` has default-providers for only ONE S3 key:**
+   `use_dualstack_endpoint` (also `use_fips_endpoint`). Everything else
+   in the `[s3]` sub-section is invisible to the SDK unless a caller
+   reads and applies it.
+
+4. **Implication:** to match Python's `SectionConfigProvider`, we need
+   to:
+   a. Call `aws_config::profile::load(...)` to get a `ProfileSet`
+   b. Call `profile.get("s3")` to get the raw sub-section string
+   c. Parse that string ourselves as `key = value` lines (trivial)
+   d. Read `AWS_S3_*` env vars directly via `std::env::var`
+   e. Apply the results to `aws_sdk_s3::config::Builder` — not to
+      `aws_config::ConfigLoader`, because these are S3-client-scoped,
+      not session-scoped
+
+5. **Priority chain per key:** `AWS_S3_<KEY>` env var > profile `[s3]`
+   sub-section key > profile top-level key (for the few that are
+   top-level) > SDK default. Matches Python's behavior.
+
+This is a CLI-layer responsibility. No upstream SDK fix needed.
+
 ### Transfer tuning (CLI-level, from `transferconfig.py::DEFAULTS`)
 
 | Key | Env var | Python behavior | Our class | Our decision |
@@ -90,12 +126,12 @@ override if one exists.
 
 | Key | Env var | Python behavior | Our class | Our decision |
 |---|---|---|---|---|
-| `addressing_style` | — | `path`/`virtual`/`auto`. Forces path-style or virtual-hosted-style addressing. | SDK-mapped | Honor. Wire to `Config::builder().force_path_style(true)` when `path`. `virtual` and `auto` use SDK default. |
-| `use_accelerate_endpoint` | — | Boolean. Routes through S3 Transfer Acceleration. | SDK-mapped | Honor. Wire to `Config::builder().accelerate(true)`. |
-| `use_dualstack_endpoint` | — | Boolean. Uses IPv6-capable dualstack endpoints. | SDK-mapped | Honor. Wire to `Config::builder().use_dual_stack(true)`. |
-| `payload_signing_enabled` | — | Boolean. Disables SigV4 payload signing (bucket-owner-paid style). | SDK-mapped | Verify SDK equivalent — likely needs checked-body override. Track: may require separate work. |
-| `use_arn_region` | `AWS_S3_USE_ARN_REGION` | Boolean. When using access-point ARNs, route to the ARN's region rather than the client's region. | SDK-mapped | Honor. Rust SDK endpoint resolver handles this; `Config::builder().use_arn_region(true)` or equivalent. |
-| `s3_disable_multiregion_access_points` | `AWS_S3_DISABLE_MULTIREGION_ACCESS_POINTS` | Boolean. Blocks requests to MRAP ARNs. | SDK-mapped | Honor. Wire to `Config::DisableMultiRegionAccessPoints` (already threaded through the SDK). |
+| `addressing_style` | `AWS_S3_ADDRESSING_STYLE` | `path`/`virtual`/`auto`. Forces path-style or virtual-hosted-style addressing. | SDK-mapped | **Read ourselves** (profile `[s3]` sub-section + env var). Wire to `Config::builder().force_path_style(true)` when `path`. `virtual` and `auto` use SDK default. |
+| `use_accelerate_endpoint` | `AWS_S3_USE_ACCELERATE_ENDPOINT` | Boolean. Routes through S3 Transfer Acceleration. | SDK-mapped | **Read ourselves**. Wire to `Config::builder().accelerate(true)`. |
+| `use_dualstack_endpoint` | `AWS_USE_DUALSTACK_ENDPOINT` | Boolean. Uses IPv6-capable dualstack endpoints. | SDK-mapped | **Already auto-read** by `aws-config::default_provider::use_dual_stack`. No code needed. |
+| `payload_signing_enabled` | — | Boolean. Controls SigV4 payload signing. Python's logic: explicit config wins; else HTTPS + checksum + streaming → disable; else enable. | TM-blocked | TM unconditionally disables payload signing on PutObject/UploadPart (correct default for performance). But Python honors explicit `true` from user config. TM has no hook to re-enable. Track as upstream TM gap: `payload_signing_enabled` should be configurable on TM config (default: disabled). |
+| `use_arn_region` | `AWS_S3_USE_ARN_REGION` | Boolean. When using access-point ARNs, route to the ARN's region rather than the client's region. Default `true`. | SDK-mapped | **Read ourselves**. Wire to `Config::builder().use_arn_region(true/false)`. Default true in both SDKs' endpoint rulesets. |
+| `s3_disable_multiregion_access_points` | `AWS_S3_DISABLE_MULTIREGION_ACCESS_POINTS` | Boolean. Blocks requests to MRAP ARNs. | SDK-mapped | **Read ourselves**. Wire to `Config::builder().disable_multi_region_access_points(true)`. |
 
 ### Other relevant session config
 
@@ -103,6 +139,7 @@ override if one exists.
 |---|---|---|---|---|
 | `region` | `AWS_DEFAULT_REGION`, `AWS_REGION` | Region for requests. | SDK-mapped | Already honored via `--region` and standard aws_config chain. |
 | `signature_version` | — | `s3v4`/`v4`/etc. Historical — S3 is SigV4-only now. | Python-quirk (no-op) | Accept any value. Log at debug if non-default. Rust SDK uses SigV4 universally for S3. |
+| `us_east_1_regional_endpoint` | `AWS_S3_US_EAST_1_REGIONAL_ENDPOINT` | `regional`/`legacy`. Controls whether us-east-1 uses `s3.amazonaws.com` (legacy) or `s3.us-east-1.amazonaws.com` (regional). Default `regional`. | SDK-mapped | **Read ourselves**. Endpoint resolver has `use_global_endpoint` param (defaults `false`). Not exposed on S3 Config builder — needs custom endpoint params plugin or interceptor to set `use_global_endpoint = true` when user config says `legacy`. Real divergence for users with `legacy` set. |
 | `s3_endpoint_url` | `AWS_ENDPOINT_URL_S3` | S3-specific endpoint override. | SDK-mapped | Honor via aws_config's service-specific endpoint resolution. |
 | `retry_mode` | `AWS_RETRY_MODE` | `legacy`/`standard`/`adaptive`. | SDK-mapped | Already honored via aws_config. Tracked separately in compat.md §retry parity. |
 

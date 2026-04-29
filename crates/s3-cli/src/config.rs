@@ -115,6 +115,107 @@ pub fn build_ca_bundle_tls_context(path: &str) -> Result<TlsContext, CaBundleErr
         .map_err(|e| CaBundleError::TlsContext(Box::new(e)))
 }
 
+/// Parse an `[s3]` sub-section from a profile as if it were a top-level profile.
+///
+/// `aws_config::profile::parser` validates but does not structurally expose
+/// nested sub-sections like:
+/// ```ignore
+/// [profile myprofile]
+/// s3 =
+///   addressing_style = path
+///   use_accelerate_endpoint = true
+/// ```
+/// Calling `profile.get("s3")` returns the raw multi-line string
+/// `"\n  addressing_style = path\n  use_accelerate_endpoint = true"`.
+///
+/// This helper normalizes that string (strips leading whitespace per line)
+/// and re-parses it through the SDK's own parser by wrapping it in a
+/// synthetic `[default]` profile. Callers get structured key-value access
+/// via the returned `HashMap`.
+///
+/// Returns `Ok(None)` if `raw_subsection` contains no `key = value` lines.
+///
+/// TODO: upstream this as structured sub-section access in `aws-config`,
+/// matching botocore's `SectionConfigProvider`. See bosun.md
+/// §Upstream Contributions. Until then we work around by round-tripping
+/// through the parser.
+pub async fn parse_s3_subsection(
+    raw_subsection: &str,
+) -> Result<Option<std::collections::HashMap<String, String>>, SubsectionParseError> {
+    use aws_config::profile::load;
+    use aws_runtime::env_config::file::{EnvConfigFileKind, EnvConfigFiles};
+    use aws_types::os_shim_internal::{Env, Fs};
+
+    // Strip leading whitespace per line so the parser sees top-level keys,
+    // not continuation lines.
+    let normalized: String = raw_subsection
+        .lines()
+        .map(str::trim)
+        .filter(|l| !l.is_empty())
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    if normalized.is_empty() {
+        return Ok(None);
+    }
+
+    let synthetic = format!("[default]\n{normalized}\n");
+    let files = EnvConfigFiles::builder()
+        .include_default_config_file(false)
+        .include_default_credentials_file(false)
+        .with_contents(EnvConfigFileKind::Config, synthetic)
+        .build();
+
+    // Fs/Env are unused because we provided synthetic contents directly,
+    // but the `load` signature requires them.
+    let fs = Fs::from_map(std::collections::HashMap::<String, Vec<u8>>::new());
+    let env = Env::from_slice(&[] as &[(&str, &str)]);
+
+    let profile_set = load(&fs, &env, &files, None)
+        .await
+        .map_err(|e| SubsectionParseError(format!("{e}")))?;
+
+    let profile = profile_set
+        .get_profile("default")
+        .ok_or_else(|| SubsectionParseError("synthetic profile vanished".to_string()))?;
+
+    let mut out = std::collections::HashMap::new();
+    for key in collect_property_keys(&normalized) {
+        if let Some(value) = profile.get(&key) {
+            out.insert(key, value.to_string());
+        }
+    }
+
+    if out.is_empty() {
+        Ok(None)
+    } else {
+        Ok(Some(out))
+    }
+}
+
+/// Extract property-name tokens from a normalized sub-section string.
+/// `ProfileSet`/`Profile` doesn't expose an iterator of property names
+/// from its public API, so we derive the key list from the input lines.
+fn collect_property_keys(normalized: &str) -> Vec<String> {
+    normalized
+        .lines()
+        .filter_map(|line| {
+            let trimmed = line.trim();
+            if trimmed.is_empty() || trimmed.starts_with('#') || trimmed.starts_with(';') {
+                return None;
+            }
+            trimmed
+                .split_once('=')
+                .map(|(k, _)| k.trim().to_ascii_lowercase())
+        })
+        .collect()
+}
+
+/// Error parsing an `[s3]` sub-section.
+#[derive(Debug, thiserror::Error)]
+#[error("failed to parse [s3] sub-section: {0}")]
+pub struct SubsectionParseError(String);
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -268,5 +369,131 @@ mod tests {
             return;
         };
         let _ctx = build_ca_bundle_tls_context(path).expect("valid system bundle");
+    }
+
+    // --- [s3] sub-section re-parse ---
+
+    #[tokio::test]
+    async fn s3_subsection_basic_keys() {
+        let raw = "\n  addressing_style = path\n  use_accelerate_endpoint = true\n";
+        let out = parse_s3_subsection(raw).await.unwrap().unwrap();
+        assert_eq!(
+            out.get("addressing_style").map(String::as_str),
+            Some("path")
+        );
+        assert_eq!(
+            out.get("use_accelerate_endpoint").map(String::as_str),
+            Some("true")
+        );
+    }
+
+    #[tokio::test]
+    async fn s3_subsection_no_indent_ok() {
+        let raw = "addressing_style = virtual\nuse_arn_region = false\n";
+        let out = parse_s3_subsection(raw).await.unwrap().unwrap();
+        assert_eq!(
+            out.get("addressing_style").map(String::as_str),
+            Some("virtual")
+        );
+        assert_eq!(out.get("use_arn_region").map(String::as_str), Some("false"));
+    }
+
+    #[tokio::test]
+    async fn s3_subsection_tabs_and_mixed_whitespace() {
+        let raw = "\n\taddressing_style\t=\tpath\n    use_accelerate_endpoint =true\n";
+        let out = parse_s3_subsection(raw).await.unwrap().unwrap();
+        assert_eq!(
+            out.get("addressing_style").map(String::as_str),
+            Some("path")
+        );
+        assert_eq!(
+            out.get("use_accelerate_endpoint").map(String::as_str),
+            Some("true")
+        );
+    }
+
+    #[tokio::test]
+    async fn s3_subsection_empty_returns_none() {
+        assert!(parse_s3_subsection("").await.unwrap().is_none());
+        assert!(parse_s3_subsection("\n\n  \n").await.unwrap().is_none());
+    }
+
+    #[tokio::test]
+    async fn s3_subsection_comment_lines_ignored() {
+        let raw = "# this is a comment\n  addressing_style = path\n  ; semicolon comment\n";
+        let out = parse_s3_subsection(raw).await.unwrap().unwrap();
+        assert_eq!(
+            out.get("addressing_style").map(String::as_str),
+            Some("path")
+        );
+        assert_eq!(out.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn s3_subsection_key_lowercased() {
+        let raw = "  Addressing_Style = path\n";
+        let out = parse_s3_subsection(raw).await.unwrap().unwrap();
+        assert!(out.contains_key("addressing_style"));
+        assert_eq!(
+            out.get("addressing_style").map(String::as_str),
+            Some("path")
+        );
+    }
+
+    #[tokio::test]
+    async fn s3_subsection_value_preserves_case_and_spaces() {
+        let raw = "  multipart_threshold = 64MB\n  multipart_chunksize = 16 MB\n";
+        let out = parse_s3_subsection(raw).await.unwrap().unwrap();
+        assert_eq!(
+            out.get("multipart_threshold").map(String::as_str),
+            Some("64MB")
+        );
+        assert_eq!(
+            out.get("multipart_chunksize").map(String::as_str),
+            Some("16 MB")
+        );
+    }
+
+    #[tokio::test]
+    async fn s3_subsection_many_keys() {
+        let raw = "\n\
+            addressing_style = path\n\
+            use_accelerate_endpoint = false\n\
+            use_dualstack_endpoint = true\n\
+            use_arn_region = true\n\
+            s3_disable_multiregion_access_points = false\n\
+            payload_signing_enabled = true\n\
+            multipart_threshold = 64MB\n\
+            multipart_chunksize = 16MB\n\
+            max_concurrent_requests = 20\n\
+            target_bandwidth = 1GB/s\n\
+            preferred_transfer_client = auto\n";
+        let out = parse_s3_subsection(raw).await.unwrap().unwrap();
+        assert_eq!(out.len(), 11);
+        for k in [
+            "addressing_style",
+            "use_accelerate_endpoint",
+            "use_dualstack_endpoint",
+            "use_arn_region",
+            "s3_disable_multiregion_access_points",
+            "payload_signing_enabled",
+            "multipart_threshold",
+            "multipart_chunksize",
+            "max_concurrent_requests",
+            "target_bandwidth",
+            "preferred_transfer_client",
+        ] {
+            assert!(out.contains_key(k), "missing {k}");
+        }
+    }
+
+    #[tokio::test]
+    async fn s3_subsection_duplicate_key_last_wins() {
+        let raw = "  addressing_style = path\n  addressing_style = virtual\n";
+        let out = parse_s3_subsection(raw).await.unwrap().unwrap();
+        assert_eq!(
+            out.get("addressing_style").map(String::as_str),
+            Some("virtual")
+        );
     }
 }
