@@ -166,7 +166,13 @@ pub struct LsArgs {
     #[arg(long)]
     pub page_size: Option<i32>,
 
-    #[arg(long, value_name = "requester")]
+    #[arg(
+        long,
+        value_name = "requester",
+        num_args = 0..=1,
+        default_missing_value = "requester",
+        value_parser = ["requester"],
+    )]
     pub request_payer: Option<String>,
 
     #[arg(long)]
@@ -258,7 +264,13 @@ pub struct TransferArgs {
     #[arg(long)]
     pub sse_c_copy_source_key: Option<String>,
 
-    #[arg(long, value_name = "requester")]
+    #[arg(
+        long,
+        value_name = "requester",
+        num_args = 0..=1,
+        default_missing_value = "requester",
+        value_parser = ["requester"],
+    )]
     pub request_payer: Option<String>,
 
     #[arg(long)]
@@ -360,7 +372,13 @@ pub struct RmArgs {
     #[arg(long)]
     pub page_size: Option<i32>,
 
-    #[arg(long, value_name = "requester")]
+    #[arg(
+        long,
+        value_name = "requester",
+        num_args = 0..=1,
+        default_missing_value = "requester",
+        value_parser = ["requester"],
+    )]
     pub request_payer: Option<String>,
 }
 
@@ -1018,6 +1036,67 @@ mod tests {
     #[test]
     fn presign_missing_path_is_error() {
         let err = parse_err(&["s3", "presign"]);
+        assert!(err.use_stderr());
+    }
+
+    // --- --request-payer optional value (Python nargs='?' const='requester') ---
+
+    #[test]
+    fn ls_request_payer_bare_flag_defaults_to_requester() {
+        let cli = parse(&["s3", "ls", "s3://bucket", "--request-payer"]);
+        let Service::S3 { command } = cli.service;
+        let S3Command::Ls(args) = command else {
+            panic!("expected Ls");
+        };
+        assert_eq!(args.request_payer.as_deref(), Some("requester"));
+    }
+
+    #[test]
+    fn ls_request_payer_explicit_value() {
+        let cli = parse(&["s3", "ls", "s3://bucket", "--request-payer", "requester"]);
+        let Service::S3 { command } = cli.service;
+        let S3Command::Ls(args) = command else {
+            panic!("expected Ls");
+        };
+        assert_eq!(args.request_payer.as_deref(), Some("requester"));
+    }
+
+    #[test]
+    fn ls_request_payer_absent_is_none() {
+        let cli = parse(&["s3", "ls", "s3://bucket"]);
+        let Service::S3 { command } = cli.service;
+        let S3Command::Ls(args) = command else {
+            panic!("expected Ls");
+        };
+        assert!(args.request_payer.is_none());
+    }
+
+    #[test]
+    fn cp_request_payer_bare_flag_defaults_to_requester() {
+        let cli = parse(&["s3", "cp", "./src", "s3://bucket/dst", "--request-payer"]);
+        let Service::S3 { command } = cli.service;
+        let S3Command::Cp(args) = command else {
+            panic!("expected Cp");
+        };
+        assert_eq!(args.transfer.request_payer.as_deref(), Some("requester"));
+    }
+
+    #[test]
+    fn rm_request_payer_bare_flag_defaults_to_requester() {
+        let cli = parse(&["s3", "rm", "s3://bucket/key", "--request-payer"]);
+        let Service::S3 { command } = cli.service;
+        let S3Command::Rm(args) = command else {
+            panic!("expected Rm");
+        };
+        assert_eq!(args.request_payer.as_deref(), Some("requester"));
+    }
+
+    #[test]
+    fn ls_request_payer_rejects_invalid_value() {
+        // Matches Python's `choices=['requester']` — any other value
+        // (including a misplaced positional like './src') is rejected
+        // at parse time with "invalid choice"/"invalid value".
+        let err = parse_err(&["s3", "ls", "s3://b", "--request-payer", "bogus"]);
         assert!(err.use_stderr());
     }
 }

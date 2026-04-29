@@ -28,7 +28,7 @@ Status key:
 | `test_summarize` | `ls::tests::run_summarize` | ✅ |
 | `test_summarize_with_human_readable` | `ls::tests::run_summarize_human_readable` | ✅ |
 | `test_requester_pays` | `ls::tests::run_list_objects_request_payer` | ✅ |
-| `test_requester_pays_with_no_args` | — | ❌ Blocked: clap requires explicit value |
+| `test_requester_pays_with_no_args` | `cli::tests::ls_request_payer_bare_flag_defaults_to_requester` | ✅ |
 | `test_accesspoint_arn` | — | ⏳ ARN parsing not implemented |
 | `test_list_buckets_uses_bucket_name_prefix` | `ls::tests::run_list_buckets_with_prefix_filter` | ✅ |
 | `test_list_buckets_uses_bucket_region` | `ls::tests::run_list_buckets_with_region_filter` | ✅ |
@@ -255,7 +255,6 @@ need resolution. Each should have a corresponding test when fixed. See
 | Gap | Impact | Python Behavior | Our Behavior |
 |-----|--------|-----------------|--------------|
 | Cross-region bucket redirect | All S3 operations | Auto-redirects via HeadBucket | Returns 301 error |
-| `--request-payer` without value | ls | Defaults to "requester" | Requires explicit value |
 | Access point ARN parsing | URI parsing | Handles ARN formats | Only handles s3://bucket/key |
 | Error message for 301 redirect | Error output | Enhanced with endpoint info | Raw error |
 | `--no-verify-ssl` | SDK config | Disables TLS verification | Rejected at arg-parse (smithy-rs has no public toggle) |

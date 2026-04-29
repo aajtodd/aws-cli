@@ -89,12 +89,23 @@ and tracked as known deviations.
 
 **Impact:** ls, cp, mv, rm, sync with `--request-payer`.
 
-**Python CLI behavior:** Uses `nargs='?'` with `const='requester'` — the
-flag can be used with or without a value. `--request-payer` alone means
-`--request-payer requester`.
+**Python CLI behavior:** Uses `nargs='?'` with `const='requester'` and
+`choices=['requester']` — the flag can be used with or without a value.
+`--request-payer` alone means `--request-payer requester`.
 
-**Rust implementation:** Currently requires an explicit value. Clap's
-`default_missing_value` should handle this but needs verification.
+**Rust implementation:** Clap `num_args = 0..=1` with
+`default_missing_value = "requester"` and `value_parser = ["requester"]`.
+Bare flag, `--request-payer requester`, and `--request-payer=requester`
+all yield `Some("requester")`; absent yields `None`.
+
+**Known quirk (matches Python):** `--request-payer` placed immediately
+before a positional arg (e.g. `cp --request-payer ./src s3://b/dst`)
+causes the positional to be consumed as the flag's value and rejected
+by `value_parser`. Same limitation in Python argparse — `choices`
+rejection catches it there too. Workaround: use `--request-payer=requester`
+or place the flag after the positional args.
+
+**Status:** Landed. See `cli::tests::*_request_payer_*` (5 tests).
 
 ## Streaming (`-`) Support
 
