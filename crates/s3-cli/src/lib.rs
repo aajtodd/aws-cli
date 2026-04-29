@@ -6,6 +6,7 @@
 //! constructing an [`AppContext`]. This keeps the library free of
 //! parsing concerns and fully testable.
 
+pub mod arn;
 pub mod cli;
 pub mod commands;
 pub mod config;

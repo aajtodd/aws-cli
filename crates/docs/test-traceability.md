@@ -29,7 +29,7 @@ Status key:
 | `test_summarize_with_human_readable` | `ls::tests::run_summarize_human_readable` | ✅ |
 | `test_requester_pays` | `ls::tests::run_list_objects_request_payer` | ✅ |
 | `test_requester_pays_with_no_args` | `cli::tests::ls_request_payer_bare_flag_defaults_to_requester` | ✅ |
-| `test_accesspoint_arn` | — | ⏳ ARN parsing not implemented |
+| `test_accesspoint_arn` | `uri::tests::arn_standard_access_point_*` (covers parse; SDK handles endpoint routing) | ✅ |
 | `test_list_buckets_uses_bucket_name_prefix` | `ls::tests::run_list_buckets_with_prefix_filter` | ✅ |
 | `test_list_buckets_uses_bucket_region` | `ls::tests::run_list_buckets_with_region_filter` | ✅ |
 | `test_list_objects_ignores_bucket_name_prefix` | `ls::tests::run_list_objects_ignores_bucket_name_prefix` | ✅ |
@@ -98,13 +98,13 @@ Status key:
 | `test_bucket_with_slash` | `uri::tests::bucket_with_trailing_slash` | ✅ |
 | `test_bucket_with_key` | `uri::tests::bucket_and_key` | ✅ |
 | `test_bucket_with_key_and_prefix` | `uri::tests::bucket_and_key` | ✅ |
-| `test_accesspoint_arn` | — | ⏳ ARN parsing not implemented |
-| `test_accesspoint_arn_with_slash` | — | ⏳ |
-| `test_accesspoint_arn_with_key` | — | ⏳ |
-| `test_accesspoint_arn_with_key_and_prefix` | — | ⏳ |
-| `test_outpost_arn_*` (8 tests) | — | ⏳ |
-| `test_object_lambda_arn_*` (2 tests) | — | ⏳ |
-| `test_outpost_bucket_arn_*` (2 tests) | — | ⏳ |
+| `test_accesspoint_arn` | `uri::tests::arn_standard_access_point_no_key` | ✅ |
+| `test_accesspoint_arn_with_slash` | `uri::tests::arn_standard_access_point_no_key` (trailing-slash equivalent covered by Python regex; our parser handles via `/` separator) | ✅ |
+| `test_accesspoint_arn_with_key` | `uri::tests::arn_standard_access_point_with_key` | ✅ |
+| `test_accesspoint_arn_with_key_and_prefix` | `uri::tests::arn_standard_access_point_deeply_nested_key` | ✅ |
+| `test_outpost_arn_*` (8 tests) | `uri::tests::arn_outposts_access_point_*` (3 tests) + `arn_outposts_bucket_rejected` + `arn_outposts_all_colon_separators` | ✅ |
+| `test_object_lambda_arn_*` (2 tests) | `uri::tests::arn_object_lambda_rejected` | ✅ |
+| `test_outpost_bucket_arn_*` (2 tests) | `uri::tests::arn_outposts_bucket_rejected` | ✅ |
 
 ### Other utils
 
@@ -221,6 +221,8 @@ These test Rust-specific concerns or expand coverage beyond the Python suite.
 | `cli::tests::globals_*` (6 tests) | Global flag parsing (before/after subcommand, defaults) |
 | `cli::tests::*_missing_*_is_error` (6 tests) | Missing required args for each command |
 | `uri::tests::transfer_uri_*` (3 tests) | TransferUri enum parsing and Display |
+| `uri::tests::arn_*` (16 tests) | Access point ARN parsing (standard, MRAP, Outposts, Object Lambda rejection, partition variants, colon-sep, deep keys, Display roundtrip) |
+| `arn::tests::*` (7 tests) | `Arn::parse` unit tests (field extraction + 4 error variants) |
 | `uri::tests::path_type_error_format_matches_cli` | Error message format matches Python CLI |
 | `format::tests::format_datetime_*` (4 tests) | Date formatting correctness |
 | `format::tests::format_size_*` (2 tests) | Size field alignment |
@@ -255,7 +257,6 @@ need resolution. Each should have a corresponding test when fixed. See
 | Gap | Impact | Python Behavior | Our Behavior |
 |-----|--------|-----------------|--------------|
 | Cross-region bucket redirect | All S3 operations | Auto-redirects via HeadBucket | Returns 301 error |
-| Access point ARN parsing | URI parsing | Handles ARN formats | Only handles s3://bucket/key |
 | Error message for 301 redirect | Error output | Enhanced with endpoint info | Raw error |
 | `--no-verify-ssl` | SDK config | Disables TLS verification | Rejected at arg-parse (smithy-rs has no public toggle) |
 | `--ca-bundle` | SDK config | Replaces system trust store | Rejected at arg-parse (TM per-thread HTTP clients have no TlsContext hook; rejecting is preferable to honoring on ls but not cp) |

@@ -1,10 +1,21 @@
 //! S3 URI parsing and path type validation.
 //!
-//! Handles the `s3://bucket/key` format used by the AWS CLI and provides
-//! [`TransferUri`] for type-safe distinction between local and S3 paths.
+//! Handles the `s3://bucket/key` format and S3 access point ARNs used by the
+//! AWS CLI. Provides [`TransferUri`] for type-safe distinction between local
+//! and S3 paths.
 
 use std::path::PathBuf;
 use std::str::FromStr;
+
+use crate::arn::Arn;
+
+#[derive(Debug, thiserror::Error, PartialEq, Eq)]
+pub enum UriParseError {
+    #[error("s3 commands do not support S3 Object Lambda resources. Use s3api commands instead.")]
+    UnsupportedObjectLambda,
+    #[error("s3 commands do not support Outpost Bucket ARNs. Use s3control commands instead.")]
+    UnsupportedOutpostBucket,
+}
 
 /// A parsed S3 URI (`s3://bucket/key`).
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -37,11 +48,13 @@ pub enum TransferUri {
 }
 
 impl FromStr for TransferUri {
-    type Err = std::convert::Infallible;
+    type Err = UriParseError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         if s.starts_with("s3://") {
             Ok(TransferUri::S3(S3Uri::parse(s)))
+        } else if s.starts_with("arn:") {
+            parse_arn_uri(s)
         } else {
             Ok(TransferUri::Local(PathBuf::from(s)))
         }
@@ -53,14 +66,90 @@ impl std::fmt::Display for TransferUri {
         match self {
             TransferUri::Local(p) => write!(f, "{}", p.display()),
             TransferUri::S3(uri) => {
+                let is_arn = uri.bucket.starts_with("arn:");
                 if uri.key.is_empty() {
-                    write!(f, "s3://{}", uri.bucket)
+                    if is_arn {
+                        write!(f, "{}", uri.bucket)
+                    } else {
+                        write!(f, "s3://{}", uri.bucket)
+                    }
+                } else if is_arn {
+                    write!(f, "{}/{}", uri.bucket, uri.key)
                 } else {
                     write!(f, "s3://{}/{}", uri.bucket, uri.key)
                 }
             }
         }
     }
+}
+
+/// Parse an `arn:` prefixed string into a `TransferUri`.
+///
+/// Rejects unsupported ARN shapes (Object Lambda, Outposts bucket) with the
+/// exact error messages Python uses. Malformed ARNs fall through to `Local`.
+fn parse_arn_uri(s: &str) -> Result<TransferUri, UriParseError> {
+    let arn = match Arn::parse(s) {
+        Ok(a) => a,
+        Err(_) => return Ok(TransferUri::Local(PathBuf::from(s))),
+    };
+
+    if arn.service == "s3-object-lambda" {
+        return Err(UriParseError::UnsupportedObjectLambda);
+    }
+
+    if arn.service == "s3" {
+        // Standard access point: resource = accesspoint[/:]NAME[/KEY...]
+        if let Some(rest) = arn
+            .resource
+            .strip_prefix("accesspoint/")
+            .or_else(|| arn.resource.strip_prefix("accesspoint:"))
+        {
+            let (bucket, key) = split_ap_name_key(rest, &arn.resource, s);
+            return Ok(TransferUri::S3(S3Uri { bucket, key }));
+        }
+    } else if arn.service == "s3-outposts" {
+        // Outposts resource: outpost[/:]ID[/:]accesspoint[/:]NAME or outpost[/:]ID[/:]bucket[/:]NAME
+        if let Some(after_outpost) = strip_segment_prefix(&arn.resource, "outpost") {
+            if let Some(after_id) = after_outpost.split_once(['/', ':']) {
+                let (_, rest_after_id) = after_id;
+                if let Some(ap_rest) = strip_segment_prefix(rest_after_id, "accesspoint") {
+                    let (bucket, key) = split_ap_name_key(ap_rest, &arn.resource, s);
+                    return Ok(TransferUri::S3(S3Uri { bucket, key }));
+                }
+                if strip_segment_prefix(rest_after_id, "bucket").is_some() {
+                    return Err(UriParseError::UnsupportedOutpostBucket);
+                }
+            }
+        }
+    }
+
+    // Unknown shape — fall through to Local (Python's behavior).
+    Ok(TransferUri::Local(PathBuf::from(s)))
+}
+
+/// Strip a segment prefix like `"accesspoint"` followed by `/` or `:`, returning
+/// the remainder. Returns `None` if the string doesn't start with `segment[/:]`.
+fn strip_segment_prefix<'a>(s: &'a str, segment: &str) -> Option<&'a str> {
+    let rest = s.strip_prefix(segment)?;
+    rest.strip_prefix('/').or_else(|| rest.strip_prefix(':'))
+}
+
+/// Given the text after `accesspoint[/:]`, split into (full_arn_bucket, key).
+///
+/// `ap_rest` is the text after the `accesspoint/` or `accesspoint:` prefix.
+/// `resource` is the full resource field. `original` is the full input string.
+fn split_ap_name_key(ap_rest: &str, resource: &str, original: &str) -> (String, String) {
+    let (_, key) = match ap_rest.find('/') {
+        Some(idx) => (&ap_rest[..idx], &ap_rest[idx + 1..]),
+        None => (ap_rest, ""),
+    };
+    // Bucket = everything in the original up to and including the AP name.
+    // The resource field starts at the 6th colon-separated field of the ARN.
+    // We find where the key starts in the resource and take the original up to that point.
+    let name_end_in_resource = resource.len() - if key.is_empty() { 0 } else { key.len() + 1 };
+    let resource_start = original.len() - resource.len();
+    let bucket = &original[..resource_start + name_end_in_resource];
+    (bucket.to_string(), key.to_string())
 }
 
 /// The type of transfer determined by source and destination paths.
@@ -330,5 +419,228 @@ mod tests {
         let err = validate_path_type("cp", &[local("/a"), local("/b")]).unwrap_err();
         assert!(err.starts_with("usage: aws s3 cp "));
         assert!(err.ends_with("Error: Invalid argument type"));
+    }
+
+    // --- ARN parsing via TransferUri::from_str ---
+
+    #[test]
+    fn arn_standard_access_point_no_key() {
+        let uri: TransferUri = "arn:aws:s3:us-east-1:123456789012:accesspoint/my-ap"
+            .parse()
+            .unwrap();
+        let TransferUri::S3(s3) = uri else {
+            panic!("expected S3")
+        };
+        assert_eq!(
+            s3.bucket,
+            "arn:aws:s3:us-east-1:123456789012:accesspoint/my-ap"
+        );
+        assert_eq!(s3.key, "");
+    }
+
+    #[test]
+    fn arn_standard_access_point_with_key() {
+        let uri: TransferUri = "arn:aws:s3:us-east-1:123456789012:accesspoint/my-ap/dir/file.txt"
+            .parse()
+            .unwrap();
+        let TransferUri::S3(s3) = uri else {
+            panic!("expected S3")
+        };
+        assert_eq!(
+            s3.bucket,
+            "arn:aws:s3:us-east-1:123456789012:accesspoint/my-ap"
+        );
+        assert_eq!(s3.key, "dir/file.txt");
+    }
+
+    #[test]
+    fn arn_standard_access_point_colon_separator() {
+        let uri: TransferUri = "arn:aws:s3:us-east-1:123456789012:accesspoint:my-ap"
+            .parse()
+            .unwrap();
+        let TransferUri::S3(s3) = uri else {
+            panic!("expected S3")
+        };
+        assert!(s3.bucket.starts_with("arn:aws:s3:"));
+        assert!(s3.bucket.ends_with("my-ap"));
+        assert_eq!(s3.key, "");
+    }
+
+    #[test]
+    fn arn_mrap() {
+        let uri: TransferUri = "arn:aws:s3::123456789012:accesspoint/mfzwi23gnjvgw.mrap/foo.txt"
+            .parse()
+            .unwrap();
+        let TransferUri::S3(s3) = uri else {
+            panic!("expected S3")
+        };
+        assert_eq!(
+            s3.bucket,
+            "arn:aws:s3::123456789012:accesspoint/mfzwi23gnjvgw.mrap"
+        );
+        assert_eq!(s3.key, "foo.txt");
+    }
+
+    #[test]
+    fn arn_partition_variants() {
+        for part in ["aws", "aws-cn", "aws-us-gov", "aws-iso", "aws-iso-b"] {
+            let uri: TransferUri = format!("arn:{part}:s3:us-east-1:123456789012:accesspoint/ap")
+                .parse()
+                .unwrap();
+            let TransferUri::S3(s3) = uri else {
+                panic!("expected S3")
+            };
+            assert_eq!(s3.key, "");
+            assert!(s3.bucket.contains(part));
+        }
+    }
+
+    #[test]
+    fn arn_outposts_access_point_no_key() {
+        let uri: TransferUri =
+            "arn:aws:s3-outposts:us-east-1:123456789012:outpost/op-0123abcd/accesspoint/my-ap"
+                .parse()
+                .unwrap();
+        let TransferUri::S3(s3) = uri else {
+            panic!("expected S3")
+        };
+        assert_eq!(
+            s3.bucket,
+            "arn:aws:s3-outposts:us-east-1:123456789012:outpost/op-0123abcd/accesspoint/my-ap"
+        );
+        assert_eq!(s3.key, "");
+    }
+
+    #[test]
+    fn arn_outposts_access_point_with_key() {
+        let uri: TransferUri = "arn:aws:s3-outposts:us-east-1:123456789012:outpost/op-0123abcd/accesspoint/my-ap/data/file.bin"
+            .parse()
+            .unwrap();
+        let TransferUri::S3(s3) = uri else {
+            panic!("expected S3")
+        };
+        assert_eq!(
+            s3.bucket,
+            "arn:aws:s3-outposts:us-east-1:123456789012:outpost/op-0123abcd/accesspoint/my-ap"
+        );
+        assert_eq!(s3.key, "data/file.bin");
+    }
+
+    #[test]
+    fn arn_object_lambda_rejected() {
+        let err = "arn:aws:s3-object-lambda:us-east-1:123456789012:accesspoint/my-olap"
+            .parse::<TransferUri>()
+            .unwrap_err();
+        assert_eq!(
+            err.to_string(),
+            "s3 commands do not support S3 Object Lambda resources. Use s3api commands instead."
+        );
+    }
+
+    #[test]
+    fn arn_outposts_bucket_rejected() {
+        let err = "arn:aws:s3-outposts:us-east-1:123456789012:outpost/op-0123abcd/bucket/my-bucket"
+            .parse::<TransferUri>()
+            .unwrap_err();
+        assert_eq!(
+            err.to_string(),
+            "s3 commands do not support Outpost Bucket ARNs. Use s3control commands instead."
+        );
+    }
+
+    #[test]
+    fn arn_display_roundtrip_no_key() {
+        let input = "arn:aws:s3:us-east-1:123456789012:accesspoint/my-ap";
+        let uri: TransferUri = input.parse().unwrap();
+        assert_eq!(uri.to_string(), input);
+    }
+
+    #[test]
+    fn arn_display_roundtrip_with_key() {
+        let input = "arn:aws:s3:us-east-1:123456789012:accesspoint/my-ap/dir/file.txt";
+        let uri: TransferUri = input.parse().unwrap();
+        assert_eq!(uri.to_string(), input);
+    }
+
+    #[test]
+    fn arn_display_outposts_roundtrip() {
+        let input = "arn:aws:s3-outposts:us-east-1:123456789012:outpost/op-0123abcd/accesspoint/my-ap/data.bin";
+        let uri: TransferUri = input.parse().unwrap();
+        assert_eq!(uri.to_string(), input);
+    }
+
+    #[test]
+    fn malformed_arn_falls_through_to_local() {
+        let uri: TransferUri = "arn:broken".parse().unwrap();
+        assert!(matches!(uri, TransferUri::Local(_)));
+    }
+
+    #[test]
+    fn existing_s3_uri_unaffected() {
+        let uri: TransferUri = "s3://bucket/key".parse().unwrap();
+        let TransferUri::S3(s3) = uri else { panic!() };
+        assert_eq!(s3.bucket, "bucket");
+        assert_eq!(s3.key, "key");
+    }
+
+    #[test]
+    fn existing_local_path_unaffected() {
+        let uri: TransferUri = "/tmp/file.txt".parse().unwrap();
+        assert!(matches!(uri, TransferUri::Local(_)));
+    }
+
+    #[test]
+    fn arn_standard_access_point_deeply_nested_key() {
+        let input = "arn:aws:s3:us-east-1:123456789012:accesspoint/my-ap/a/b/c/d/e/deep.txt";
+        let uri: TransferUri = input.parse().unwrap();
+        let TransferUri::S3(s3) = uri else {
+            panic!("expected S3")
+        };
+        assert_eq!(
+            s3.bucket,
+            "arn:aws:s3:us-east-1:123456789012:accesspoint/my-ap"
+        );
+        assert_eq!(s3.key, "a/b/c/d/e/deep.txt");
+    }
+
+    #[test]
+    fn arn_standard_access_point_colon_separator_with_key() {
+        // The `:` form must still correctly split the key. The `/` after
+        // the AP name is what terminates the name.
+        let input = "arn:aws:s3:us-east-1:123456789012:accesspoint:my-ap/dir/file.txt";
+        let uri: TransferUri = input.parse().unwrap();
+        let TransferUri::S3(s3) = uri else {
+            panic!("expected S3")
+        };
+        assert_eq!(s3.key, "dir/file.txt");
+        assert!(s3.bucket.ends_with("my-ap"));
+    }
+
+    #[test]
+    fn arn_mrap_with_deeply_nested_key() {
+        let input = "arn:aws:s3::123456789012:accesspoint/mfzwi23gnjvgw.mrap/a/b/c.txt";
+        let uri: TransferUri = input.parse().unwrap();
+        let TransferUri::S3(s3) = uri else {
+            panic!("expected S3")
+        };
+        assert_eq!(
+            s3.bucket,
+            "arn:aws:s3::123456789012:accesspoint/mfzwi23gnjvgw.mrap"
+        );
+        assert_eq!(s3.key, "a/b/c.txt");
+    }
+
+    #[test]
+    fn arn_outposts_all_colon_separators() {
+        // Python's regex uses `[/:]` throughout Outposts parsing; the all-`:`
+        // form must be accepted.
+        let input = "arn:aws:s3-outposts:us-east-1:123456789012:outpost:op-0123:accesspoint:my-ap";
+        let uri: TransferUri = input.parse().unwrap();
+        let TransferUri::S3(s3) = uri else {
+            panic!("expected S3")
+        };
+        assert!(s3.bucket.contains("outpost:op-0123"));
+        assert!(s3.bucket.ends_with("my-ap"));
+        assert_eq!(s3.key, "");
     }
 }

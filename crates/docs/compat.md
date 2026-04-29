@@ -69,10 +69,29 @@ listing sets `delimiter("/")` and `prefix("")`. Recursive listing sets
 point ARNs (`arn:aws:s3:...`), outpost ARNs, and MRAP ARNs via regex
 matching. Object Lambda and outpost bucket ARNs are rejected.
 
-**Rust implementation:** Currently only handles `s3://bucket/key` format.
-ARN parsing not yet implemented.
+**Rust implementation:** `src/arn.rs` provides a dedicated ARN parser
+(no regex). `TransferUri::from_str` recognizes inputs starting with
+`arn:`, parses them, and classifies by `service` + `resource` shape:
 
-**Python tests:** `test_utils.py` has 15+ ARN parsing tests.
+| ARN shape | Behavior |
+|-----------|----------|
+| Standard access point (`s3`) | Accepted; bucket field carries full ARN up to AP name, remainder becomes key |
+| MRAP (`s3` with empty region) | Accepted; same shape as standard AP |
+| Outposts access point (`s3-outposts`, resource `outpost/ID/accesspoint/NAME`) | Accepted |
+| Outposts bucket (`s3-outposts`, resource `outpost/ID/bucket/NAME`) | Rejected with Python-exact message |
+| S3 Object Lambda (`s3-object-lambda`) | Rejected with Python-exact message |
+| Malformed / unknown shape | Falls through to `Local` (matches Python's lenient fallthrough) |
+
+Both `/` and `:` are accepted as segment separators within the resource
+field (`accesspoint:NAME`, `outpost:ID:accesspoint:NAME`). All partition
+variants are accepted (`aws`, `aws-cn`, `aws-us-gov`, `aws-iso`, `aws-iso-b`).
+SDK endpoint resolver handles routing once the ARN is in the bucket slot.
+
+**Status:** Landed. See `uri::tests::arn_*` (16 tests) +
+`arn::tests::*` (7 tests).
+
+**Python tests:** `test_utils.py` has 15+ ARN parsing tests; our black-box
+tests cover the same behavior via the public `TransferUri::from_str` path.
 
 ## Content-Type Detection
 
