@@ -135,10 +135,24 @@ fn build_tm(ctx: &AppContext) -> aws_sdk_s3_transfer_manager::Client {
     // TODO: thread a `TlsContext` through when `--ca-bundle` is re-enabled.
     let s3_builder = ctx.s3_config_builder();
     let s3_config = aws_sdk_s3_transfer_manager::config::S3ClientConfig::new(s3_builder);
+
+    let part_size = match ctx.s3_config_keys.multipart_chunksize {
+        Some(bytes) => PartSize::Target(bytes),
+        None => PartSize::Auto,
+    };
+    let multipart_threshold = match ctx.s3_config_keys.multipart_threshold {
+        Some(bytes) => PartSize::Target(bytes),
+        None => PartSize::Auto,
+    };
+    // TODO: target_bandwidth is exposed on TM config but not yet implemented.
+    // When TM implements TargetThroughput, wire ctx.s3_config_keys.target_bandwidth here.
+    let concurrency = ConcurrencyMode::default();
+
     let config = aws_sdk_s3_transfer_manager::Config::builder()
         .s3_config(s3_config)
-        .concurrency(ConcurrencyMode::default())
-        .part_size(PartSize::Auto)
+        .concurrency(concurrency)
+        .part_size(part_size)
+        .multipart_threshold(multipart_threshold)
         .build();
     aws_sdk_s3_transfer_manager::Client::new(config)
 }

@@ -228,6 +228,13 @@ pub struct S3ConfigKeys {
     /// `s3_disable_multiregion_access_points`: boolean.
     /// Env: `AWS_S3_DISABLE_MULTIREGION_ACCESS_POINTS`.
     pub disable_multiregion_access_points: Option<bool>,
+    /// `multipart_threshold`: min object size for multipart upload (bytes).
+    pub multipart_threshold: Option<u64>,
+    /// `multipart_chunksize`: target part size for multipart (bytes).
+    pub multipart_chunksize: Option<u64>,
+    /// `target_bandwidth`: throughput target in bytes/sec.
+    /// TM config is exposed but implementation is not yet complete.
+    pub target_bandwidth: Option<u64>,
 }
 
 /// Valid values for `addressing_style` in `[s3]` config.
@@ -313,11 +320,26 @@ pub async fn load_s3_config(profile_override: Option<&str>) -> S3ConfigKeys {
         .as_ref()
         .and_then(|m| parse_bool(m.get("use_accelerate_endpoint")?));
 
+    let multipart_threshold = profile_keys
+        .as_ref()
+        .and_then(|m| parse_human_readable_size(m.get("multipart_threshold")?));
+
+    let multipart_chunksize = profile_keys
+        .as_ref()
+        .and_then(|m| parse_human_readable_size(m.get("multipart_chunksize")?));
+
+    let target_bandwidth = profile_keys
+        .as_ref()
+        .and_then(|m| parse_human_readable_rate(m.get("target_bandwidth")?));
+
     S3ConfigKeys {
         addressing_style,
         use_accelerate_endpoint,
         use_arn_region,
         disable_multiregion_access_points,
+        multipart_threshold,
+        multipart_chunksize,
+        target_bandwidth,
     }
 }
 
@@ -372,6 +394,65 @@ fn parse_bool(s: &str) -> Option<bool> {
         "true" | "1" | "yes" => Some(true),
         "false" | "0" | "no" => Some(false),
         _ => None,
+    }
+}
+
+/// Parse a human-readable size string into bytes.
+///
+/// Accepts: plain integers (bytes), or suffixed values like `64MB`, `8MiB`,
+/// `1GB`. Matches Python's `human_readable_to_int` from
+/// `awscli/customizations/s3/utils.py`.
+pub fn parse_human_readable_size(s: &str) -> Option<u64> {
+    let s = s.trim();
+    let lower = s.to_ascii_lowercase();
+
+    // Check for IEC suffix (3 chars: kib, mib, gib, tib)
+    let (num_str, multiplier) = if lower.len() >= 3 && lower.ends_with("ib") {
+        let suffix = &lower[lower.len() - 3..];
+        let mult = match suffix {
+            "kib" => 1024u64,
+            "mib" => 1024u64.pow(2),
+            "gib" => 1024u64.pow(3),
+            "tib" => 1024u64.pow(4),
+            _ => return None,
+        };
+        (&s[..s.len() - 3], mult)
+    } else if lower.len() >= 2 {
+        let suffix = &lower[lower.len() - 2..];
+        let mult = match suffix {
+            "kb" => 1024u64,
+            "mb" => 1024u64.pow(2),
+            "gb" => 1024u64.pow(3),
+            "tb" => 1024u64.pow(4),
+            _ => return s.parse().ok(),
+        };
+        (&s[..s.len() - 2], mult)
+    } else {
+        return s.parse().ok();
+    };
+
+    num_str.trim().parse::<u64>().ok().map(|n| n * multiplier)
+}
+
+/// Parse a human-readable rate string into bytes per second.
+///
+/// Accepts: plain integers (bytes/sec), `10MB/s` (bytes-based rate),
+/// `10Mb/s` (bits-based rate, divided by 8). Matches Python's
+/// `_convert_human_readable_rates`.
+pub fn parse_human_readable_rate(s: &str) -> Option<u64> {
+    let s = s.trim();
+
+    if s.ends_with("B/s") {
+        // Bytes-based rate: strip "/s", parse as size
+        let size_part = &s[..s.len() - 2]; // strip "/s"
+        parse_human_readable_size(size_part)
+    } else if s.ends_with("b/s") {
+        // Bits-based rate: strip "/s", parse as size (in bits), divide by 8
+        let size_part = &s[..s.len() - 2];
+        parse_human_readable_size(size_part).map(|bits| bits / 8)
+    } else {
+        // Plain integer = bytes/sec
+        s.parse().ok()
     }
 }
 
@@ -684,6 +765,7 @@ mod tests {
             use_accelerate_endpoint: Some(true),
             use_arn_region: Some(true),
             disable_multiregion_access_points: Some(true),
+            ..Default::default()
         };
         let _conf = keys.apply(aws_sdk_s3::config::Builder::new()).build();
     }
@@ -707,6 +789,56 @@ mod tests {
         assert_eq!(parse_bool("no"), Some(false));
         assert_eq!(parse_bool(""), None);
         assert_eq!(parse_bool("maybe"), None);
+    }
+
+    #[test]
+    fn parse_size_plain_integer() {
+        assert_eq!(parse_human_readable_size("8388608"), Some(8_388_608));
+    }
+
+    #[test]
+    fn parse_size_mb_suffix() {
+        assert_eq!(parse_human_readable_size("64MB"), Some(64 * 1024 * 1024));
+        assert_eq!(parse_human_readable_size("8mb"), Some(8 * 1024 * 1024));
+    }
+
+    #[test]
+    fn parse_size_gb_suffix() {
+        assert_eq!(parse_human_readable_size("1GB"), Some(1024 * 1024 * 1024));
+    }
+
+    #[test]
+    fn parse_size_iec_suffix() {
+        assert_eq!(parse_human_readable_size("64MiB"), Some(64 * 1024 * 1024));
+        assert_eq!(parse_human_readable_size("1GiB"), Some(1024 * 1024 * 1024));
+    }
+
+    #[test]
+    fn parse_size_invalid() {
+        assert_eq!(parse_human_readable_size("abc"), None);
+        assert_eq!(parse_human_readable_size(""), None);
+    }
+
+    #[test]
+    fn parse_rate_bytes_per_sec() {
+        assert_eq!(parse_human_readable_rate("10MB/s"), Some(10 * 1024 * 1024));
+        assert_eq!(parse_human_readable_rate("1GB/s"), Some(1024 * 1024 * 1024));
+    }
+
+    #[test]
+    fn parse_rate_bits_per_sec() {
+        // 10Gb/s = 10 * 1024^3 bits / 8 = 1_342_177_280 bytes/sec
+        assert_eq!(
+            parse_human_readable_rate("10Gb/s"),
+            Some(10 * 1024 * 1024 * 1024 / 8)
+        );
+        // 800Kb/s = 800 * 1024 bits / 8 = 102_400 bytes/sec
+        assert_eq!(parse_human_readable_rate("800Kb/s"), Some(800 * 1024 / 8));
+    }
+
+    #[test]
+    fn parse_rate_plain_integer() {
+        assert_eq!(parse_human_readable_rate("10485760"), Some(10_485_760));
     }
 
     #[tokio::test]

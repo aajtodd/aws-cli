@@ -775,6 +775,47 @@ matching Python's help text from `awscli/customizations/s3/subcommands.py`.
 | `max_concurrent_requests` | — | `10` | Request concurrency cap | Not wired (fleet-mode bridge) |
 | `max_bandwidth` | — | `None` | Bandwidth cap (bytes/sec) | Not wired (TM-blocked) |
 | `preferred_transfer_client` | — | `auto` | `auto`/`classic`/`crt` | No-op (we're TM-only; accept any value) |
+
+### TM Transfer Config Mapping
+
+How Python's `[s3]` transfer tuning keys map to TM config, and where
+the semantics diverge.
+
+**Python has two transfer backends with different config consumption:**
+
+CRT backend (`preferred_transfer_client = crt`, default):
+- `target_bandwidth` → `throughput_target_gbps` (bytes/sec → gbps)
+- `multipart_chunksize` → `part_size` (only if explicitly set; else CRT auto-calculates)
+- `max_concurrent_requests` → **ignored** (CRT manages concurrency from throughput target)
+- `multipart_threshold` → **ignored** (CRT always does multipart)
+- `max_bandwidth` → **ignored** (only `target_bandwidth` matters for CRT)
+
+Classic backend (`preferred_transfer_client = classic`):
+- `max_concurrent_requests` → `max_request_concurrency` (thread pool size = max in-flight S3 API calls)
+- `multipart_threshold` → `multipart_threshold`
+- `multipart_chunksize` → `multipart_chunksize`
+- `max_bandwidth` → `max_bandwidth` (hard cap via token bucket)
+- `target_bandwidth` → **ignored** (classic doesn't use it)
+
+**TM mapping (our architecture is closer to CRT):**
+
+| Config key | TM config | Semantic match? | Status |
+|---|---|---|---|
+| `multipart_threshold` | `Config::multipart_threshold(PartSize::Target(bytes))` | Yes — min size before MPU | Not wired |
+| `multipart_chunksize` | `Config::part_size(PartSize::Target(bytes))` | Yes — target part size | Not wired |
+| `target_bandwidth` | `ConcurrencyMode::TargetThroughput(gbps)` | Yes — throughput target drives concurrency | Not wired |
+| `max_concurrent_requests` | No clean mapping | Python = max in-flight API calls. TM's `ConcurrencyMode::Explicit(n)` controls worker count + concurrency controller permits, not raw API call count. `num_workers()` is being removed. Needs TM-side design for "max in-flight requests" as a separate knob. | Deferred |
+| `max_bandwidth` | No TM equivalent | Hard bandwidth cap. TM has no rate limiter. | Blocked on TM |
+| `preferred_transfer_client` | N/A | We're TM-only. Accept any value, no-op. | No-op |
+
+**What we can wire now:** `multipart_threshold` and `multipart_chunksize`
+(parse human-readable size → bytes → `PartSize::Target`). Also
+`target_bandwidth` (parse rate string → bytes/sec → gbps →
+`TargetThroughput`). These three have clean semantic mappings.
+
+**What needs TM design:** `max_concurrent_requests` as a cap on
+in-flight S3 API calls (independent of worker count or throughput
+mode). `max_bandwidth` as a hard rate limiter.
 | `target_bandwidth` | — | `None` | CRT bandwidth target | Not wired (fleet-mode bridge) |
 | `max_queue_size` | — | `1000` | Request queue depth | No-op (classic implementation detail) |
 | `io_chunksize` | — | `256KB` | File I/O chunk size | No-op (classic implementation detail) |
