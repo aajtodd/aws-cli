@@ -118,81 +118,6 @@ mod tests {
         std::path::MAIN_SEPARATOR
     }
 
-    /// Python: `relative_path('/tmp/foo/bar', '/tmp/foo')` →
-    /// split → dirname='/tmp/foo', basename='bar'
-    /// relpath('/tmp/foo', '/tmp/foo') = '.'
-    /// join('.', 'bar') = './bar'
-    #[test]
-    fn relpath_subdir_file() {
-        let result = relative_path(Path::new("/tmp/foo/bar"), Path::new("/tmp/foo"));
-        assert_eq!(result, format!(".{}bar", sep()));
-    }
-
-    /// Python: `relative_path('/tmp/foo/bar', '/tmp/foo/bar')` →
-    /// split → dirname='/tmp/foo', basename='bar'
-    /// relpath('/tmp/foo', '/tmp/foo/bar') = '..'
-    /// join('..', 'bar') = '../bar'
-    #[test]
-    fn relpath_same_path() {
-        let result = relative_path(Path::new("/tmp/foo/bar"), Path::new("/tmp/foo/bar"));
-        assert_eq!(result, format!("..{}bar", sep()));
-    }
-
-    /// Python: `relative_path('/etc/passwd', '/tmp')` →
-    /// split → dirname='/etc', basename='passwd'
-    /// relpath('/etc', '/tmp') = '../etc'
-    /// join('../etc', 'passwd') = '../etc/passwd'
-    #[test]
-    fn relpath_sibling_tree() {
-        let result = relative_path(Path::new("/etc/passwd"), Path::new("/tmp"));
-        assert_eq!(result, format!("..{s}etc{s}passwd", s = sep()));
-    }
-
-    /// Python: `relative_path('/tmp/foo/bar/baz', '/tmp/foo')` →
-    /// split → dirname='/tmp/foo/bar', basename='baz'
-    /// relpath('/tmp/foo/bar', '/tmp/foo') = 'bar'
-    /// join('bar', 'baz') = 'bar/baz'
-    #[test]
-    fn relpath_nested_subdir() {
-        let result = relative_path(Path::new("/tmp/foo/bar/baz"), Path::new("/tmp/foo"));
-        assert_eq!(result, format!("bar{}baz", sep()));
-    }
-
-    /// Python: `relative_path('/tmp/foo', '/tmp')` →
-    /// split → dirname='/tmp', basename='foo'
-    /// relpath('/tmp', '/tmp') = '.'
-    /// join('.', 'foo') = './foo'
-    #[test]
-    fn relpath_child_of_cwd() {
-        let result = relative_path(Path::new("/tmp/foo"), Path::new("/tmp"));
-        assert_eq!(result, format!(".{}foo", sep()));
-    }
-
-    /// Python: `relative_path('/a/b/c/d/e', '/a/b/x/y')` →
-    /// split → dirname='/a/b/c/d', basename='e'
-    /// relpath('/a/b/c/d', '/a/b/x/y') = '../../c/d'
-    /// join('../../c/d', 'e') = '../../c/d/e'
-    #[test]
-    fn relpath_deep_divergence() {
-        let result = relative_path(Path::new("/a/b/c/d/e"), Path::new("/a/b/x/y"));
-        assert_eq!(result, format!("..{s}..{s}c{s}d{s}e", s = sep()));
-    }
-
-    /// Relative input path — the behavior is CWD-dependent in Python, so we
-    /// don't try to match it exactly. We verify our implementation handles it
-    /// without panicking.
-    #[test]
-    fn relpath_relative_input_does_not_panic() {
-        let _ = relative_path(Path::new("foo/bar"), Path::new("/tmp"));
-    }
-
-    /// Non-absolute `start` cannot produce a relpath — fall back to raw.
-    #[test]
-    fn relpath_non_absolute_start_falls_back() {
-        let result = relative_path(Path::new("/tmp/foo"), Path::new("relative/start"));
-        assert_eq!(result, "/tmp/foo");
-    }
-
     /// `format_local_path` uses CWD. Smoke test: path inside CWD round-trips
     /// to something starting with `.` (the dirname relpath is `.`).
     #[test]
@@ -201,5 +126,90 @@ mod tests {
         let file = cwd.join("some-test-file.txt");
         let result = format_local_path(&file);
         assert_eq!(result, format!(".{}some-test-file.txt", sep()));
+    }
+
+    /// Relative input path — verify no panic.
+    #[test]
+    fn relpath_relative_input_does_not_panic() {
+        let cwd = std::env::current_dir().expect("cwd");
+        let _ = relative_path(Path::new("foo/bar"), &cwd);
+    }
+
+    // --- Unix-specific tests (absolute paths use `/` root) ---
+
+    #[cfg(unix)]
+    mod unix {
+        use super::*;
+
+        #[test]
+        fn relpath_subdir_file() {
+            let result = relative_path(Path::new("/tmp/foo/bar"), Path::new("/tmp/foo"));
+            assert_eq!(result, "./bar");
+        }
+
+        #[test]
+        fn relpath_same_path() {
+            let result = relative_path(Path::new("/tmp/foo/bar"), Path::new("/tmp/foo/bar"));
+            assert_eq!(result, "../bar");
+        }
+
+        #[test]
+        fn relpath_sibling_tree() {
+            let result = relative_path(Path::new("/etc/passwd"), Path::new("/tmp"));
+            assert_eq!(result, "../etc/passwd");
+        }
+
+        #[test]
+        fn relpath_nested_subdir() {
+            let result = relative_path(Path::new("/tmp/foo/bar/baz"), Path::new("/tmp/foo"));
+            assert_eq!(result, "bar/baz");
+        }
+
+        #[test]
+        fn relpath_child_of_cwd() {
+            let result = relative_path(Path::new("/tmp/foo"), Path::new("/tmp"));
+            assert_eq!(result, "./foo");
+        }
+
+        #[test]
+        fn relpath_deep_divergence() {
+            let result = relative_path(Path::new("/a/b/c/d/e"), Path::new("/a/b/x/y"));
+            assert_eq!(result, "../../c/d/e");
+        }
+
+        #[test]
+        fn relpath_non_absolute_start_falls_back() {
+            let result = relative_path(Path::new("/tmp/foo"), Path::new("relative/start"));
+            assert_eq!(result, "/tmp/foo");
+        }
+    }
+
+    // --- Windows-specific tests ---
+
+    #[cfg(windows)]
+    mod windows {
+        use super::*;
+
+        #[test]
+        fn cross_drive_falls_back_to_absolute() {
+            // Different drive letters → no relative path possible.
+            let result = relative_path(Path::new(r"D:\data\file.txt"), Path::new(r"C:\Users\me"));
+            assert_eq!(result, r"D:\data\file.txt");
+        }
+
+        #[test]
+        fn same_drive_produces_relative() {
+            let result = relative_path(
+                Path::new(r"C:\Users\me\docs\file.txt"),
+                Path::new(r"C:\Users\me"),
+            );
+            assert_eq!(result, r".\docs\file.txt");
+        }
+
+        #[test]
+        fn backslash_separators() {
+            let result = relative_path(Path::new(r"C:\a\b\c\d"), Path::new(r"C:\a\b"));
+            assert_eq!(result, r"c\d");
+        }
     }
 }

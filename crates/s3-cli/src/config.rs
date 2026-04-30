@@ -237,6 +237,29 @@ pub mod addressing_style {
     pub const AUTO: &str = "auto";
 }
 
+/// Resolve the effective profile name.
+///
+/// Priority (matches Python's `configprovider.py`):
+/// `--profile` flag > `AWS_PROFILE` env > `AWS_DEFAULT_PROFILE` env > None (SDK default).
+///
+/// Returns `None` when no override is needed (SDK will use "default").
+pub fn resolve_profile_name(cli_flag: Option<&str>) -> Option<String> {
+    if let Some(p) = cli_flag {
+        return Some(p.to_string());
+    }
+    if let Ok(p) = std::env::var("AWS_PROFILE") {
+        if !p.is_empty() {
+            return Some(p);
+        }
+    }
+    if let Ok(p) = std::env::var("AWS_DEFAULT_PROFILE") {
+        if !p.is_empty() {
+            return Some(p);
+        }
+    }
+    None
+}
+
 impl S3ConfigKeys {
     /// Apply these keys to an S3 config builder.
     pub fn apply(self, mut builder: aws_sdk_s3::config::Builder) -> aws_sdk_s3::config::Builder {
@@ -833,5 +856,81 @@ region = eu-west-1
 ";
         let keys = load_keys_from_config(config, Some("no-s3"), &[]).await;
         assert!(keys.is_none());
+    }
+
+    // --- resolve_profile_name ---
+
+    #[test]
+    fn resolve_profile_cli_flag_wins() {
+        assert_eq!(
+            resolve_profile_name(Some("from-cli")),
+            Some("from-cli".to_string())
+        );
+    }
+
+    #[test]
+    fn resolve_profile_none_when_nothing_set() {
+        // Temporarily clear both env vars to test the None path.
+        let saved_profile = std::env::var("AWS_PROFILE").ok();
+        let saved_default = std::env::var("AWS_DEFAULT_PROFILE").ok();
+        std::env::remove_var("AWS_PROFILE");
+        std::env::remove_var("AWS_DEFAULT_PROFILE");
+
+        let result = resolve_profile_name(None);
+
+        // Restore
+        if let Some(v) = saved_profile {
+            std::env::set_var("AWS_PROFILE", v);
+        }
+        if let Some(v) = saved_default {
+            std::env::set_var("AWS_DEFAULT_PROFILE", v);
+        }
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn resolve_profile_aws_default_profile_used_as_fallback() {
+        let saved_profile = std::env::var("AWS_PROFILE").ok();
+        let saved_default = std::env::var("AWS_DEFAULT_PROFILE").ok();
+        std::env::remove_var("AWS_PROFILE");
+        std::env::set_var("AWS_DEFAULT_PROFILE", "fallback");
+
+        let result = resolve_profile_name(None);
+
+        // Restore
+        if let Some(v) = saved_profile {
+            std::env::set_var("AWS_PROFILE", v);
+        } else {
+            std::env::remove_var("AWS_PROFILE");
+        }
+        if let Some(v) = saved_default {
+            std::env::set_var("AWS_DEFAULT_PROFILE", v);
+        } else {
+            std::env::remove_var("AWS_DEFAULT_PROFILE");
+        }
+        assert_eq!(result, Some("fallback".to_string()));
+    }
+
+    #[test]
+    fn resolve_profile_aws_profile_beats_default() {
+        let saved_profile = std::env::var("AWS_PROFILE").ok();
+        let saved_default = std::env::var("AWS_DEFAULT_PROFILE").ok();
+        std::env::set_var("AWS_PROFILE", "primary");
+        std::env::set_var("AWS_DEFAULT_PROFILE", "fallback");
+
+        let result = resolve_profile_name(None);
+
+        // Restore
+        if let Some(v) = saved_profile {
+            std::env::set_var("AWS_PROFILE", v);
+        } else {
+            std::env::remove_var("AWS_PROFILE");
+        }
+        if let Some(v) = saved_default {
+            std::env::set_var("AWS_DEFAULT_PROFILE", v);
+        } else {
+            std::env::remove_var("AWS_DEFAULT_PROFILE");
+        }
+        assert_eq!(result, Some("primary".to_string()));
     }
 }

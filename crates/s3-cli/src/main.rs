@@ -122,14 +122,18 @@ async fn build_context(globals: &GlobalArgs) -> AppContext {
     // surface. Bump deliberately.
     let mut config_loader = aws_config::defaults(aws_config::BehaviorVersion::v2026_01_12());
 
+    // Resolve effective profile: --profile > AWS_PROFILE > AWS_DEFAULT_PROFILE.
+    // Rust SDK only reads AWS_PROFILE; we handle AWS_DEFAULT_PROFILE ourselves.
+    let effective_profile = resolve_profile_name(globals.profile.as_deref());
+    if let Some(ref profile) = effective_profile {
+        config_loader = config_loader.profile_name(profile);
+    }
+
     if let Some(ref region) = globals.region {
         config_loader = config_loader.region(aws_config::Region::new(region.clone()));
     }
     if let Some(ref endpoint) = globals.endpoint_url {
         config_loader = config_loader.endpoint_url(endpoint);
-    }
-    if let Some(ref profile) = globals.profile {
-        config_loader = config_loader.profile_name(profile);
     }
 
     if globals.no_sign_request {
@@ -143,10 +147,20 @@ async fn build_context(globals: &GlobalArgs) -> AppContext {
 
     let sdk_config = config_loader.load().await;
 
-    let s3_keys = s3_cli::config::load_s3_config(globals.profile.as_deref()).await;
+    let s3_keys = s3_cli::config::load_s3_config(effective_profile.as_deref()).await;
     let s3_config_builder = s3_keys.apply(aws_sdk_s3::config::Builder::from(&sdk_config));
     let client = aws_sdk_s3::Client::from_conf(s3_config_builder.build());
     AppContext::new(client, sdk_config, globals.clone())
+}
+
+/// Resolve the effective profile name.
+///
+/// Priority (matches Python's `configprovider.py`):
+/// `--profile` flag > `AWS_PROFILE` env > `AWS_DEFAULT_PROFILE` env > None (SDK default).
+///
+/// Returns `None` when no override is needed (SDK will use "default").
+fn resolve_profile_name(cli_flag: Option<&str>) -> Option<String> {
+    s3_cli::config::resolve_profile_name(cli_flag)
 }
 
 /// Reset SIGPIPE to default behavior so piping to `head`, `less`, etc.
