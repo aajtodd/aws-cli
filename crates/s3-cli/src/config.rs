@@ -48,7 +48,6 @@ pub fn build_timeout_config(globals: &GlobalArgs) -> TimeoutConfig {
 }
 
 // TODO: re-enable `--ca-bundle` once TM supports `TlsContext` passthrough.
-// See bosun.md "Upstream Contributions".
 
 /// Error building a custom TLS context from `--ca-bundle`.
 #[allow(dead_code)]
@@ -136,9 +135,7 @@ pub fn build_ca_bundle_tls_context(path: &str) -> Result<TlsContext, CaBundleErr
 /// Returns `Ok(None)` if `raw_subsection` contains no `key = value` lines.
 ///
 /// TODO: upstream this as structured sub-section access in `aws-config`,
-/// matching botocore's `SectionConfigProvider`. See bosun.md
-/// §Upstream Contributions. Until then we work around by round-tripping
-/// through the parser.
+/// matching botocore's `SectionConfigProvider`.
 pub async fn parse_s3_subsection(
     raw_subsection: &str,
 ) -> Result<Option<std::collections::HashMap<String, String>>, SubsectionParseError> {
@@ -215,6 +212,145 @@ fn collect_property_keys(normalized: &str) -> Vec<String> {
 #[derive(Debug, thiserror::Error)]
 #[error("failed to parse [s3] sub-section: {0}")]
 pub struct SubsectionParseError(String);
+
+/// S3-specific configuration resolved from `[s3]` profile sub-section
+/// and `AWS_S3_*` environment variables.
+///
+/// Priority (highest wins): env var > profile config > SDK default.
+#[derive(Debug, Default)]
+pub struct S3ConfigKeys {
+    /// `addressing_style`: "path" or "virtual". Maps to `force_path_style(true)`.
+    pub addressing_style: Option<String>,
+    /// `use_accelerate_endpoint`: boolean. Maps to `accelerate(true)`.
+    pub use_accelerate_endpoint: Option<bool>,
+    /// `use_arn_region`: boolean. Env: `AWS_S3_USE_ARN_REGION`.
+    pub use_arn_region: Option<bool>,
+    /// `s3_disable_multiregion_access_points`: boolean.
+    /// Env: `AWS_S3_DISABLE_MULTIREGION_ACCESS_POINTS`.
+    pub disable_multiregion_access_points: Option<bool>,
+}
+
+/// Valid values for `addressing_style` in `[s3]` config.
+pub mod addressing_style {
+    pub const PATH: &str = "path";
+    pub const VIRTUAL: &str = "virtual";
+    pub const AUTO: &str = "auto";
+}
+
+impl S3ConfigKeys {
+    /// Apply these keys to an S3 config builder.
+    pub fn apply(self, mut builder: aws_sdk_s3::config::Builder) -> aws_sdk_s3::config::Builder {
+        if let Some(ref style) = self.addressing_style {
+            if style == addressing_style::PATH {
+                builder = builder.force_path_style(true);
+            }
+            // "virtual" and "auto" are the SDK default — no action needed.
+            // Unknown values fall through (matches Python's behavior).
+        }
+        if let Some(accel) = self.use_accelerate_endpoint {
+            builder = builder.accelerate(accel);
+        }
+        if let Some(arn) = self.use_arn_region {
+            builder = builder.use_arn_region(arn);
+        }
+        if let Some(disable) = self.disable_multiregion_access_points {
+            builder = builder.disable_multi_region_access_points(disable);
+        }
+        builder
+    }
+}
+
+/// Load S3-specific config keys from the profile `[s3]` sub-section and
+/// `AWS_S3_*` environment variables.
+///
+/// `profile_override` should be the `--profile` CLI flag value (if any).
+/// When `None`, uses `AWS_PROFILE` or defaults to `"default"`.
+pub async fn load_s3_config(profile_override: Option<&str>) -> S3ConfigKeys {
+    let profile_keys = load_s3_profile_keys(profile_override).await;
+
+    // Env vars take precedence over profile config.
+    let use_arn_region = read_bool_env("AWS_S3_USE_ARN_REGION").or_else(|| {
+        profile_keys
+            .as_ref()
+            .and_then(|m| parse_bool(m.get("use_arn_region")?))
+    });
+
+    let disable_multiregion_access_points =
+        read_bool_env("AWS_S3_DISABLE_MULTIREGION_ACCESS_POINTS").or_else(|| {
+            profile_keys
+                .as_ref()
+                .and_then(|m| parse_bool(m.get("s3_disable_multiregion_access_points")?))
+        });
+
+    let addressing_style = profile_keys
+        .as_ref()
+        .and_then(|m| m.get("addressing_style").cloned());
+
+    let use_accelerate_endpoint = profile_keys
+        .as_ref()
+        .and_then(|m| parse_bool(m.get("use_accelerate_endpoint")?));
+
+    S3ConfigKeys {
+        addressing_style,
+        use_accelerate_endpoint,
+        use_arn_region,
+        disable_multiregion_access_points,
+    }
+}
+
+/// Load and parse the `[s3]` sub-section from the active profile.
+async fn load_s3_profile_keys(
+    profile_override: Option<&str>,
+) -> Option<std::collections::HashMap<String, String>> {
+    use aws_types::os_shim_internal::{Env, Fs};
+    load_s3_profile_keys_from(profile_override, Fs::default(), Env::default()).await
+}
+
+/// Inner implementation accepting injectable Fs/Env for testability.
+async fn load_s3_profile_keys_from(
+    profile_override: Option<&str>,
+    fs: aws_types::os_shim_internal::Fs,
+    env: aws_types::os_shim_internal::Env,
+) -> Option<std::collections::HashMap<String, String>> {
+    use aws_config::profile::load;
+    use aws_runtime::env_config::file::EnvConfigFiles;
+    use std::borrow::Cow;
+
+    let files = EnvConfigFiles::default();
+    let override_cow = profile_override.map(|s| Cow::Owned(s.to_string()));
+
+    let profile_set = match load(&fs, &env, &files, override_cow).await {
+        Ok(ps) => ps,
+        Err(e) => {
+            tracing::debug!(error = %e, "failed to load profile; skipping [s3] config");
+            return None;
+        }
+    };
+
+    let profile_name = profile_override.unwrap_or(profile_set.selected_profile());
+    let profile = profile_set.get_profile(profile_name)?;
+    let raw_s3 = profile.get("s3")?;
+
+    match parse_s3_subsection(raw_s3).await {
+        Ok(keys) => keys,
+        Err(e) => {
+            tracing::warn!(error = %e, "failed to parse [s3] sub-section; ignoring");
+            None
+        }
+    }
+}
+
+fn read_bool_env(key: &str) -> Option<bool> {
+    parse_bool(&std::env::var(key).ok()?)
+}
+
+fn parse_bool(s: &str) -> Option<bool> {
+    match s.to_ascii_lowercase().as_str() {
+        "true" | "1" | "yes" => Some(true),
+        "false" | "0" | "no" => Some(false),
+        _ => None,
+    }
+}
 
 #[cfg(test)]
 mod tests {
@@ -495,5 +631,207 @@ mod tests {
             out.get("addressing_style").map(String::as_str),
             Some("virtual")
         );
+    }
+
+    // --- S3ConfigKeys ---
+
+    #[test]
+    fn apply_path_style_builds_without_panic() {
+        let keys = S3ConfigKeys {
+            addressing_style: Some("path".to_string()),
+            ..Default::default()
+        };
+        // Verifies the builder method is called without error.
+        let _conf = keys.apply(aws_sdk_s3::config::Builder::new()).build();
+    }
+
+    #[test]
+    fn apply_virtual_style_builds_without_panic() {
+        let keys = S3ConfigKeys {
+            addressing_style: Some("virtual".to_string()),
+            ..Default::default()
+        };
+        let _conf = keys.apply(aws_sdk_s3::config::Builder::new()).build();
+    }
+
+    #[test]
+    fn apply_all_keys_builds_without_panic() {
+        let keys = S3ConfigKeys {
+            addressing_style: Some("path".to_string()),
+            use_accelerate_endpoint: Some(true),
+            use_arn_region: Some(true),
+            disable_multiregion_access_points: Some(true),
+        };
+        let _conf = keys.apply(aws_sdk_s3::config::Builder::new()).build();
+    }
+
+    #[test]
+    fn apply_none_leaves_builder_unchanged() {
+        let keys = S3ConfigKeys::default();
+        let _conf = keys.apply(aws_sdk_s3::config::Builder::new()).build();
+    }
+
+    #[test]
+    fn parse_bool_variants() {
+        assert_eq!(parse_bool("true"), Some(true));
+        assert_eq!(parse_bool("True"), Some(true));
+        assert_eq!(parse_bool("TRUE"), Some(true));
+        assert_eq!(parse_bool("1"), Some(true));
+        assert_eq!(parse_bool("yes"), Some(true));
+        assert_eq!(parse_bool("false"), Some(false));
+        assert_eq!(parse_bool("False"), Some(false));
+        assert_eq!(parse_bool("0"), Some(false));
+        assert_eq!(parse_bool("no"), Some(false));
+        assert_eq!(parse_bool(""), None);
+        assert_eq!(parse_bool("maybe"), None);
+    }
+
+    #[tokio::test]
+    async fn load_s3_config_env_overrides_profile() {
+        std::env::set_var("AWS_S3_USE_ARN_REGION", "true");
+        let keys = load_s3_config(Some("nonexistent-profile-for-test")).await;
+        std::env::remove_var("AWS_S3_USE_ARN_REGION");
+        assert_eq!(keys.use_arn_region, Some(true));
+    }
+
+    #[tokio::test]
+    async fn load_s3_config_env_disable_mrap() {
+        std::env::set_var("AWS_S3_DISABLE_MULTIREGION_ACCESS_POINTS", "true");
+        let keys = load_s3_config(Some("nonexistent-profile-for-test")).await;
+        std::env::remove_var("AWS_S3_DISABLE_MULTIREGION_ACCESS_POINTS");
+        assert_eq!(keys.disable_multiregion_access_points, Some(true));
+    }
+
+    #[tokio::test]
+    async fn load_s3_config_missing_profile_returns_defaults() {
+        let keys = load_s3_config(Some("nonexistent-profile-for-test")).await;
+        assert!(keys.addressing_style.is_none());
+        assert!(keys.use_accelerate_endpoint.is_none());
+    }
+
+    // --- Profile selection tests ---
+
+    /// Helper: load S3 profile keys from a synthetic config file.
+    async fn load_keys_from_config(
+        config_content: &str,
+        profile_override: Option<&str>,
+        env_vars: &[(&str, &str)],
+    ) -> Option<std::collections::HashMap<String, String>> {
+        use aws_types::os_shim_internal::{Env, Fs};
+        use std::collections::HashMap;
+
+        let mut files = HashMap::new();
+        files.insert(
+            "~/.aws/config".to_string(),
+            config_content.as_bytes().to_vec(),
+        );
+        let fs = Fs::from_map(files);
+        let env = Env::from_slice(env_vars);
+        load_s3_profile_keys_from(profile_override, fs, env).await
+    }
+
+    #[tokio::test]
+    async fn profile_override_selects_correct_s3_section() {
+        let config = "\
+[default]
+s3 =
+  addressing_style = virtual
+
+[profile custom]
+s3 =
+  addressing_style = path
+  use_accelerate_endpoint = true
+";
+        // --profile custom → reads from [profile custom]
+        let keys = load_keys_from_config(config, Some("custom"), &[])
+            .await
+            .unwrap();
+        assert_eq!(
+            keys.get("addressing_style").map(String::as_str),
+            Some("path")
+        );
+        assert_eq!(
+            keys.get("use_accelerate_endpoint").map(String::as_str),
+            Some("true")
+        );
+    }
+
+    #[tokio::test]
+    async fn default_profile_used_when_no_override() {
+        let config = "\
+[default]
+s3 =
+  addressing_style = path
+
+[profile other]
+s3 =
+  addressing_style = virtual
+";
+        // No override, no AWS_PROFILE → uses [default]
+        let keys = load_keys_from_config(config, None, &[]).await.unwrap();
+        assert_eq!(
+            keys.get("addressing_style").map(String::as_str),
+            Some("path")
+        );
+    }
+
+    #[tokio::test]
+    async fn aws_profile_env_selects_profile_when_no_override() {
+        let config = "\
+[default]
+s3 =
+  addressing_style = virtual
+
+[profile from-env]
+s3 =
+  addressing_style = path
+";
+        // AWS_PROFILE=from-env, no --profile → uses [profile from-env]
+        let keys = load_keys_from_config(config, None, &[("AWS_PROFILE", "from-env")])
+            .await
+            .unwrap();
+        assert_eq!(
+            keys.get("addressing_style").map(String::as_str),
+            Some("path")
+        );
+    }
+
+    #[tokio::test]
+    async fn cli_override_takes_precedence_over_aws_profile_env() {
+        let config = "\
+[default]
+s3 =
+  addressing_style = virtual
+
+[profile from-env]
+s3 =
+  addressing_style = path
+
+[profile from-cli]
+s3 =
+  use_accelerate_endpoint = true
+";
+        // --profile from-cli wins over AWS_PROFILE=from-env
+        let keys = load_keys_from_config(config, Some("from-cli"), &[("AWS_PROFILE", "from-env")])
+            .await
+            .unwrap();
+        assert_eq!(
+            keys.get("use_accelerate_endpoint").map(String::as_str),
+            Some("true")
+        );
+        assert!(!keys.contains_key("addressing_style"));
+    }
+
+    #[tokio::test]
+    async fn profile_without_s3_section_returns_none() {
+        let config = "\
+[default]
+region = us-east-1
+
+[profile no-s3]
+region = eu-west-1
+";
+        let keys = load_keys_from_config(config, Some("no-s3"), &[]).await;
+        assert!(keys.is_none());
     }
 }

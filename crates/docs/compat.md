@@ -603,20 +603,44 @@ Every other S3 key (`addressing_style`, `use_accelerate_endpoint`,
 `payload_signing_enabled`) is **not read by aws-config** — neither from
 the profile nor from `AWS_S3_*` env vars. The SDK accepts these on
 `aws_sdk_s3::config::Builder` (`force_path_style`, `accelerate`,
-`use_arn_region`, `disable_multi_region_access_points`) but we have to
-feed them ourselves.
+`use_arn_region`, `disable_multi_region_access_points`) but we feed
+them ourselves from the profile `[s3]` sub-section and env vars.
 
 ### Per-key reference
 
 | Config Key | Env Var | Default | Effect | Status |
 |---|---|---|---|---|
-| `addressing_style` | `AWS_S3_ADDRESSING_STYLE` | `auto` | `path`/`virtual`/`auto` — host-style vs path-style | Not wired |
-| `use_accelerate_endpoint` | `AWS_S3_USE_ACCELERATE_ENDPOINT` | `false` | Transfer Acceleration endpoint | Not wired |
-| `use_dualstack_endpoint` | `AWS_USE_DUALSTACK_ENDPOINT` | `false` | IPv6 dualstack endpoint | Auto-read by aws-config ✅ |
-| `use_arn_region` | `AWS_S3_USE_ARN_REGION` | `true` | Route to ARN's region | Not wired |
-| `s3_disable_multiregion_access_points` | `AWS_S3_DISABLE_MULTIREGION_ACCESS_POINTS` | `false` | Block MRAP usage | Not wired |
+| `addressing_style` | — | `auto` | `path`/`virtual`/`auto` — host-style vs path-style | ✅ Wired (profile `[s3]` sub-section) |
+| `use_accelerate_endpoint` | — | `false` | Transfer Acceleration endpoint | ✅ Wired (profile `[s3]` sub-section) |
+| `use_dualstack_endpoint` | `AWS_USE_DUALSTACK_ENDPOINT` | `false` | IPv6 dualstack endpoint | ✅ Auto-read by aws-config |
+| `use_arn_region` | `AWS_S3_USE_ARN_REGION` | `true` | Route to ARN's region | ✅ Wired (env var + profile) |
+| `s3_disable_multiregion_access_points` | `AWS_S3_DISABLE_MULTIREGION_ACCESS_POINTS` | `false` | Block MRAP usage | ✅ Wired (env var + profile) |
 | `payload_signing_enabled` | — | varies | Sign request payload | Partial match. TM unconditionally calls `.disable_payload_signing()` on PutObject/UploadPart — matches Python's *default* behavior (HTTPS + checksum → disable). But Python **honors explicit `payload_signing_enabled = true`** from user config, overriding the default. TM has no hook to re-enable. Tracked as upstream TM gap: should be configurable (default disable, allow override). |
 | `signature_version` | — | `s3v4` | `s3`/`s3v4`/`s3v4a` — historical | No-op (Rust SDK is SigV4-only for S3; SigV4a for MRAP is automatic) |
+
+### Help System
+
+Python's `aws s3 help` and `aws s3 cp help` use a trailing `help`
+positional argument that renders man-page-style output through a pager.
+`--help` is **not recognized** by Python (`Unknown options: --help`).
+
+Our CLI uses clap's built-in `--help` flag (standard for Rust CLIs) and
+does not recognize `help` as a positional. Two gaps:
+
+1. **`help` positional not recognized** — `aws s3 help` returns exit 252
+   with "unrecognized subcommand." Users migrating from Python will hit
+   this immediately.
+2. **Arg descriptions missing** — `TransferArgs`, `CpArgs`, `MvArgs`,
+   `SyncArgs`, `RmArgs` fields have no doc comments, so `--help` output
+   shows empty descriptions for ~40 flags. Global args are documented.
+
+Resolution options for (1):
+- Add `help` as a hidden subcommand that prints the same as `--help`
+- Or: add `help` as a hidden subcommand that renders richer docs (closer
+  to Python's man-page format)
+
+Resolution for (2): add `///` doc comments to all arg fields in cli.rs,
+matching Python's help text from `awscli/customizations/s3/subcommands.py`.
 | `us_east_1_regional_endpoint` | `AWS_S3_US_EAST_1_REGIONAL_ENDPOINT` | `regional` | `regional` vs `legacy` for us-east-1 | Not wired (SDK endpoint resolver has `use_global_endpoint` param but it's not exposed on S3 Config builder — needs custom endpoint params plugin or interceptor) |
 | `multipart_threshold` | — | `8MB` | Min size for multipart upload | Not wired (TM-mapped) |
 | `multipart_chunksize` | — | `8MB` | Part size for multipart | Not wired (TM-mapped) |

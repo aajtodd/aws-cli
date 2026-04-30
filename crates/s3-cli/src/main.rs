@@ -143,10 +143,9 @@ async fn build_context(globals: &GlobalArgs) -> AppContext {
 
     let sdk_config = config_loader.load().await;
 
-    // TODO: apply S3-specific config keys (`[s3]` section / `AWS_S3_*`
-    // env vars) to the S3 Config builder. See compat.md §S3-Specific
-    // Config Keys.
-    let client = aws_sdk_s3::Client::new(&sdk_config);
+    let s3_keys = s3_cli::config::load_s3_config(globals.profile.as_deref()).await;
+    let s3_config_builder = s3_keys.apply(aws_sdk_s3::config::Builder::from(&sdk_config));
+    let client = aws_sdk_s3::Client::from_conf(s3_config_builder.build());
     AppContext::new(client, sdk_config, globals.clone())
 }
 
