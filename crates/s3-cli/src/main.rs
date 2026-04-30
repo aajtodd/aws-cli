@@ -148,9 +148,13 @@ async fn build_context(globals: &GlobalArgs) -> AppContext {
     let sdk_config = config_loader.load().await;
 
     let s3_keys = s3_cli::config::load_s3_config(effective_profile.as_deref()).await;
-    let s3_config_builder = s3_keys.apply(aws_sdk_s3::config::Builder::from(&sdk_config));
+    let s3_config_builder = s3_keys
+        .clone()
+        .apply(aws_sdk_s3::config::Builder::from(&sdk_config))
+        .interceptor(s3_cli::redirect::RegionRedirectInterceptor::new())
+        .retry_classifier(s3_cli::redirect::region_redirect_classifier());
     let client = aws_sdk_s3::Client::from_conf(s3_config_builder.build());
-    AppContext::new(client, sdk_config, globals.clone())
+    AppContext::new(client, sdk_config, globals.clone(), s3_keys)
 }
 
 /// Resolve the effective profile name.

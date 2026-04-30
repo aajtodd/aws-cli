@@ -14,6 +14,7 @@ pub mod context;
 pub mod error;
 pub mod format;
 pub mod paths;
+pub mod redirect;
 pub mod term;
 pub mod uri;
 

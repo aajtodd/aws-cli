@@ -9,22 +9,150 @@ commands can pass compat tests.
 **Impact:** All S3 operations against buckets in a different region than
 the configured default.
 
-**Python CLI behavior:** botocore's `S3RegionRedirectorv2` intercepts 301
-PermanentRedirect errors, does a HeadBucket to discover the correct region,
-and retries the request transparently. `aws s3 ls s3://bucket-in-us-west-2`
-works from any region without `--region`.
+**Python CLI behavior:** botocore's `S3RegionRedirectorv2` (registered
+unconditionally on every S3 client at `client.py:330`) handles this via
+three event hooks:
+
+1. **`before-parameter-build.s3` → `annotate_request_context`**: Stashes
+   the bucket name into `context['s3_redirect']` before each request.
+
+2. **`before-endpoint-resolution.s3` → `redirect_from_cache`**: If the
+   bucket is in the redirect cache (from a prior redirect), overrides
+   `AWS::Region` in the endpoint resolver builtins so the request goes
+   to the correct region without hitting the error path again.
+
+3. **`needs-retry.s3` → `redirect_from_error`**: After a failed request,
+   checks if the error is a redirect signal. If so, extracts the correct
+   region, caches it, re-resolves the endpoint with the new region, and
+   returns `0` (immediate retry, no backoff).
+
+**Redirect triggers** (any of these → redirect):
+- `PermanentRedirect` error code
+- HTTP status 301, 302, or 307
+- `AuthorizationHeaderMalformed` with `Region` in error body
+- Error code `301` or `400` on HeadObject
+- Error code `301` or `400` on HeadBucket with `x-amz-bucket-region` header
+- `IllegalLocationConstraintException` (except on CreateBucket)
+
+**Region discovery priority** (`get_bucket_region`):
+1. `x-amz-bucket-region` response header (present on 301 responses)
+2. `Error.Region` in the XML error body (for `AuthorizationHeaderMalformed`)
+3. HeadBucket fallback — only if neither header nor body had the region
+
+**Key semantics:**
+- Redirect is **in-band**: the same request is retried with a new signing
+  region and endpoint URL. No new client is constructed.
+- A **per-client cache** (`self._cache[bucket] = region`) avoids repeat
+  redirects for the same bucket.
+- ARN-based requests are **never redirected** (ARN routing is handled by
+  the endpoint resolver directly).
+- A request is only redirected **once** (`context['s3_redirect']['redirected']`
+  flag prevents loops).
+- The retry return value is `0` (immediate, no exponential backoff).
 
 **Rust SDK behavior:** Returns the 301 as a service error. No automatic
-redirect.
+redirect. No equivalent of `S3RegionRedirectorv2`.
 
-**Options:**
-1. Implement redirect logic (HeadBucket → extract region → rebuild client → retry)
-    - We don't need to rebuild client, SDK allows for per/operation overrides. 
-2. Always resolve bucket region via HeadBucket before first operation
-3. Require `--region` (breaks compat, not viable)
+**Design considerations for our implementation:**
+
+Two code paths need redirect support:
+1. **Direct S3 client** (ls, mb, rb, rm, presign, website) — we own the
+   client, can wrap it or add an interceptor.
+2. **Transfer Manager** (cp, mv, sync) — TM owns its own S3 client(s)
+   internally. Redirect logic needs to be available to TM too.
+
+Options:
+- **Smithy interceptor** (`Intercept` trait): register on the S3 client's
+  runtime plugins. Fires at `read_after_attempt` (after response, before
+  retry decision). Can modify the request context and signal retry. This
+  is the Rust SDK's equivalent of botocore's event system. Would work for
+  both our direct client and TM's client if TM exposes a way to add
+  interceptors (or if we upstream it into the SDK itself).
+- **Wrapper layer**: catch the error at our call sites, resolve region,
+  retry with a per-operation region override. Simpler but doesn't help TM.
+- **Upstream into SDK**: the most correct long-term answer. S3's endpoint
+  ruleset already has the `UseGlobalEndpoint` parameter — the redirect
+  logic could live alongside it. But this is a large upstream contribution.
+
+**Recommendation:** Start with a smithy interceptor that we register on
+our S3 client config. Design it as a standalone, reusable component
+(e.g. `s3_region_redirect::RegionRedirectInterceptor`) so TM can adopt
+it later. Cache is `Arc<DashMap<String, String>>` or similar. If TM
+exposes `RuntimePlugin` registration on its internal client, we pass the
+same interceptor instance.
+
+**SDK mechanism analysis (Rust):**
+
+The orchestrator's attempt loop calls `try_attempt` per retry, which
+re-resolves the endpoint each time via `orchestrate_endpoint`
+(`aws-smithy-runtime/src/client/orchestrator/endpoints.rs:71`). This
+function reads `EndpointResolverParams` from `cfg.interceptor_state()`
+each attempt — it does NOT re-derive them. `ctx.rewind()` only resets
+request/response/output, NOT the ConfigBag. So any state stored in
+interceptor state survives across retries.
+
+The generated per-operation endpoint params interceptor (e.g.
+`PutObjectEndpointParamsInterceptor`) runs at `read_before_execution`
+(once, before retry loop). It reads `Region` from ConfigBag and builds
+`s3::config::endpoint::Params`, storing them as
+`EndpointResolverParams` in interceptor state.
+
+**Concrete mechanism:**
+
+1. **Custom `ClassifyRetry`**: detects 301/PermanentRedirect/
+   AuthorizationHeaderMalformed, returns
+   `RetryAction::RetryIndicated` (immediate, no backoff).
+
+2. **`modify_before_attempt_completion` interceptor**: after a failed
+   attempt, checks response status/headers. If redirect:
+   - Extracts region from `x-amz-bucket-region` header or error body
+   - Downcasts existing `EndpointResolverParams` to
+     `s3::config::endpoint::Params` (it derives `Clone`, has public
+     getters for all fields)
+   - Rebuilds `Params` via `ParamsBuilder` with new region (all other
+     fields copied from old params via getters)
+   - Stores new `EndpointResolverParams::new(new_params)` in
+     `cfg.interceptor_state()`
+   - Caches bucket→region in `Arc<Mutex<HashMap>>` on the interceptor
+   - Signing region flows automatically from endpoint resolution output
+     (the resolved endpoint's `authSchemes[].signingRegion`)
+
+3. **`read_before_attempt` interceptor** (optional optimization): on
+   subsequent requests to the same bucket, check cache and pre-set
+   params with correct region before the first attempt even fails.
+   Avoids the wasted round-trip on known-redirected buckets.
+
+**Fields to copy when rebuilding Params** (from public getters):
+`bucket`, `region`, `use_fips`, `use_dual_stack`, `endpoint`,
+`force_path_style`, `accelerate`, `use_global_endpoint`,
+`use_object_lambda_endpoint`, `key`, `prefix`, `copy_source`,
+`disable_access_points`, `disable_multi_region_access_points`,
+`use_arn_region`, `use_s3_express_control_endpoint`,
+`disable_s3_express_session_auth`.
+
+**Reusability:** The interceptor is S3-specific (depends on
+`s3::config::endpoint::Params`). It can be registered on any S3 client
+via `config::Builder::push_interceptor()`. TM can adopt it by exposing
+interceptor registration on its internal client config, or by accepting
+a `SharedInterceptor` in `S3ClientConfig`.
+
+**TM telemetry gap:** TM's `load()` wires a `FrameworkMetadata`
+interceptor that adds `ft/s3-transfer` to the user-agent. When we
+bypass `load()` and use `S3ClientConfig::new(builder)` directly (which
+we do to control the S3 config builder), that interceptor is missing.
+TM requests won't carry the TM-specific user-agent component. Not a
+correctness issue — telemetry only. Fix is TM-side: either expose the
+interceptor publicly or have `S3ClientConfig::new()` always add it.
 
 **Python tests:** `tests/unit/botocore/test_utils.py` (`S3RegionRedirectorv2`),
 `tests/unit/customizations/test_s3errormsg.py` (`test_301_error_message`).
+
+**Known minor divergence:** Python retries the redirect immediately
+(`return 0`). Our implementation uses the SDK's standard retry strategy
+which applies ~250ms exponential backoff on the first redirect. Not a
+correctness issue — adds latency on first cross-region access only
+(subsequent requests use the cache). Fixable by using a custom
+`RetryReason` that bypasses backoff.
 
 ## Error Message Format
 

@@ -217,7 +217,7 @@ pub struct SubsectionParseError(String);
 /// and `AWS_S3_*` environment variables.
 ///
 /// Priority (highest wins): env var > profile config > SDK default.
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct S3ConfigKeys {
     /// `addressing_style`: "path" or "virtual". Maps to `force_path_style(true)`.
     pub addressing_style: Option<String>,

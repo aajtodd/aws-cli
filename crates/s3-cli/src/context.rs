@@ -3,6 +3,7 @@
 use aws_config::SdkConfig;
 
 use crate::cli::GlobalArgs;
+use crate::config::S3ConfigKeys;
 use crate::term;
 
 /// Shared context available to all S3 subcommands.
@@ -17,19 +18,39 @@ pub struct AppContext {
     pub sdk_config: SdkConfig,
     /// Global CLI flags (`--region`, `--debug`, `--no-sign-request`, etc.).
     pub globals: GlobalArgs,
+    /// S3-specific config keys from profile + env vars.
+    pub s3_config_keys: S3ConfigKeys,
     /// Terminal for output and terminal control.
     pub term: Box<dyn term::Terminal>,
 }
 
 impl AppContext {
     /// Create an AppContext with real stdout/stderr.
-    pub fn new(client: aws_sdk_s3::Client, sdk_config: SdkConfig, globals: GlobalArgs) -> Self {
+    pub fn new(
+        client: aws_sdk_s3::Client,
+        sdk_config: SdkConfig,
+        globals: GlobalArgs,
+        s3_config_keys: S3ConfigKeys,
+    ) -> Self {
         Self {
             client,
             sdk_config,
             globals,
+            s3_config_keys,
             term: Box::new(term::StdTerminal::new()),
         }
+    }
+
+    /// Build an `aws_sdk_s3::config::Builder` with S3-specific config keys
+    /// and the redirect interceptor applied. This is the single path for
+    /// constructing S3 client config — used by both the direct client
+    /// (ls/mb/rb/rm/presign/website) and the Transfer Manager.
+    pub fn s3_config_builder(&self) -> aws_sdk_s3::config::Builder {
+        self.s3_config_keys
+            .clone()
+            .apply(aws_sdk_s3::config::Builder::from(&self.sdk_config))
+            .interceptor(crate::redirect::RegionRedirectInterceptor::new())
+            .retry_classifier(crate::redirect::region_redirect_classifier())
     }
 }
 
@@ -59,6 +80,7 @@ pub mod test_util {
             client,
             sdk_config: test_sdk_config(),
             globals: GlobalArgs::default(),
+            s3_config_keys: crate::config::S3ConfigKeys::default(),
             term: Box::new(term),
         }
     }

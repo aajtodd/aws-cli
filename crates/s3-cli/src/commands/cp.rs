@@ -133,7 +133,7 @@ async fn download_single(
 
 fn build_tm(ctx: &AppContext) -> aws_sdk_s3_transfer_manager::Client {
     // TODO: thread a `TlsContext` through when `--ca-bundle` is re-enabled.
-    let s3_builder = aws_sdk_s3::config::Builder::from(&ctx.sdk_config);
+    let s3_builder = ctx.s3_config_builder();
     let s3_config = aws_sdk_s3_transfer_manager::config::S3ClientConfig::new(s3_builder);
     let config = aws_sdk_s3_transfer_manager::Config::builder()
         .s3_config(s3_config)
