@@ -464,8 +464,10 @@ with `mfa_serial` will silently fail or return a cryptic STS error.
   assume-role responses to disk at `~/.aws/cli/cache/` (reused across
   process invocations). Rust has in-memory caching only. For CLI
   workloads with rapid invocations, this means more STS calls per unit
-  time. Implementing an on-disk cache at the same path would be a
-  compat win — Python and Rust CLIs could share cache entries.
+  time. Implementation path: custom `ResolveCachedIdentity` impl that
+  wraps `LazyCache` with disk persistence at the same path. Pluggable
+  via `ConfigLoader::identity_cache(...)`. Python and Rust CLIs would
+  share cache entries — nice interop win.
 - **Error message wording:** Specific and informative in both, but
   different text. Scripts that match on error-message substrings will
   break.
@@ -770,8 +772,8 @@ Resolution options for (1):
 Resolution for (2): add `///` doc comments to all arg fields in cli.rs,
 matching Python's help text from `awscli/customizations/s3/subcommands.py`.
 | `us_east_1_regional_endpoint` | `AWS_S3_US_EAST_1_REGIONAL_ENDPOINT` | `regional` | `regional` vs `legacy` for us-east-1 | Not wired (SDK endpoint resolver has `use_global_endpoint` param but it's not exposed on S3 Config builder — needs custom endpoint params plugin or interceptor) |
-| `multipart_threshold` | — | `8MB` | Min size for multipart upload | Not wired (TM-mapped) |
-| `multipart_chunksize` | — | `8MB` | Part size for multipart | Not wired (TM-mapped) |
+| `multipart_threshold` | — | `8MB` | Min size for multipart upload | ✅ Wired (profile `[s3]`, human-readable parser) |
+| `multipart_chunksize` | — | `8MB` | Part size for multipart | ✅ Wired (profile `[s3]`, human-readable parser) |
 | `max_concurrent_requests` | — | `10` | Request concurrency cap | Not wired (fleet-mode bridge) |
 | `max_bandwidth` | — | `None` | Bandwidth cap (bytes/sec) | Not wired (TM-blocked) |
 | `preferred_transfer_client` | — | `auto` | `auto`/`classic`/`crt` | No-op (we're TM-only; accept any value) |
@@ -801,22 +803,22 @@ Classic backend (`preferred_transfer_client = classic`):
 
 | Config key | TM config | Semantic match? | Status |
 |---|---|---|---|
-| `multipart_threshold` | `Config::multipart_threshold(PartSize::Target(bytes))` | Yes — min size before MPU | Not wired |
-| `multipart_chunksize` | `Config::part_size(PartSize::Target(bytes))` | Yes — target part size | Not wired |
-| `target_bandwidth` | `ConcurrencyMode::TargetThroughput(gbps)` | Yes — throughput target drives concurrency | Not wired |
+| `multipart_threshold` | `Config::multipart_threshold(PartSize::Target(bytes))` | Yes — min size before MPU | Wired |
+| `multipart_chunksize` | `Config::part_size(PartSize::Target(bytes))` | Yes — target part size | Wired |
+| `target_bandwidth` | `ConcurrencyMode::TargetThroughput(gbps)` | Yes — throughput target drives concurrency | Parsed and stored; TM impl pending |
 | `max_concurrent_requests` | No clean mapping | Python = max in-flight API calls. TM's `ConcurrencyMode::Explicit(n)` controls worker count + concurrency controller permits, not raw API call count. `num_workers()` is being removed. Needs TM-side design for "max in-flight requests" as a separate knob. | Deferred |
 | `max_bandwidth` | No TM equivalent | Hard bandwidth cap. TM has no rate limiter. | Blocked on TM |
 | `preferred_transfer_client` | N/A | We're TM-only. Accept any value, no-op. | No-op |
 
-**What we can wire now:** `multipart_threshold` and `multipart_chunksize`
-(parse human-readable size → bytes → `PartSize::Target`). Also
-`target_bandwidth` (parse rate string → bytes/sec → gbps →
-`TargetThroughput`). These three have clean semantic mappings.
+**Wired:** `multipart_threshold` and `multipart_chunksize` (parse
+human-readable size → bytes → `PartSize::Target`). Also
+`target_bandwidth` (parse rate string → bytes/sec, stored on
+`S3ConfigKeys`; TM's `TargetThroughput` impl not yet complete).
 
 **What needs TM design:** `max_concurrent_requests` as a cap on
 in-flight S3 API calls (independent of worker count or throughput
 mode). `max_bandwidth` as a hard rate limiter.
-| `target_bandwidth` | — | `None` | CRT bandwidth target | Not wired (fleet-mode bridge) |
+| `target_bandwidth` | — | `None` | CRT bandwidth target | ✅ Parsed (rate parser); TM impl pending |
 | `max_queue_size` | — | `1000` | Request queue depth | No-op (classic implementation detail) |
 | `io_chunksize` | — | `256KB` | File I/O chunk size | No-op (classic implementation detail) |
 | `should_stream` | — | `None` | CRT streaming flag | No-op |
@@ -873,3 +875,28 @@ Per-key priority in `crates/docs/s3-config-keys.md`. Wiring order:
 - Various cp/sync tests that implicitly depend on default addressing
 
 Not yet wired into `build_context()`.
+
+## S3→S3 Copy (Not Implemented)
+
+Python's `aws s3 cp s3://src s3://dst` uses server-side copy:
+- Objects < `multipart_threshold` (8MB): single `CopyObject` API call
+- Objects ≥ 8MB: `CreateMultipartUpload` → N × `UploadPartCopy` (server-side,
+  byte-range) → `CompleteMultipartUpload`
+- CRT backend is **never** used for S3→S3 — Python forces classic s3transfer
+- Cross-region: separate source_client (source region for HeadObject),
+  destination client for copy calls
+- Cross-account: no special handling, S3 API + IAM handles it
+- `--copy-props` (3 modes: none, metadata-directive, default): multipart
+  copies don't auto-preserve metadata — requires HeadObject → inject into
+  CreateMPU. Tags need GetObjectTagging/PutObjectTagging.
+- Output: `copy: s3://source/key to s3://dest/key`
+
+**Status:** Deferred. Will implement either in TM (`tm.copy()`) or in CLI
+using walk APIs when available. TM is the likely home — copy is a transfer
+primitive, not a CLI concern. Java TM has `S3TransferManager.copy()` with
+the same HeadObject → decide → single/multipart pattern. Rust TM has no
+copy operation yet (priority #6 in TM roadmap).
+
+**5GB hard limit:** S3's `CopyObject` API has a 5GB max. Above that,
+multipart copy is mandatory. Python's 8MB threshold means it uses multipart
+even for small objects (consistency with upload behavior).

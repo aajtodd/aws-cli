@@ -3,6 +3,7 @@
 pub mod cp;
 pub mod ls;
 pub mod mb;
+pub mod mv;
 pub mod presign;
 pub mod rb;
 pub mod rm;
@@ -25,8 +26,7 @@ pub async fn dispatch(
         S3Command::Rm(args) => rm::run(args, ctx).await,
         S3Command::Presign(args) => presign::run(args, ctx).await,
         S3Command::Website(args) => website::run(args, ctx).await,
-        S3Command::Mv(_) | S3Command::Sync(_) => {
-            Err(CommandError::failure("command not yet implemented"))
-        }
+        S3Command::Mv(args) => mv::run(args, ctx).await,
+        S3Command::Sync(_) => Err(CommandError::failure("command not yet implemented")),
     }
 }

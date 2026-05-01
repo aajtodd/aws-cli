@@ -16,6 +16,7 @@ pub mod format;
 pub mod paths;
 pub mod redirect;
 pub mod term;
+pub mod transfer;
 pub mod uri;
 
 pub use cli::S3Command;
