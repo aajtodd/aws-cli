@@ -265,6 +265,25 @@ cp.
 **Rust implementation:** `TransferUri` does not have a Stdio variant.
 Not yet implemented.
 
+## Download to `/dev/null` (and other non-regular files)
+
+**Impact:** Users downloading to `/dev/null` for benchmarking or
+discarding output.
+
+**Python CLI behavior:** `aws s3 cp s3://bucket/key /dev/null` works —
+Python opens the file, writes to it, closes it. The download succeeds
+because Python's file I/O doesn't distinguish regular files from device
+nodes.
+
+**Rust implementation:** TM's `write_to_path` fails with an I/O error
+on `/dev/null`. Likely because TM uses `O_CREATE | O_TRUNC` or
+temp-file-then-rename semantics that don't work on device nodes.
+
+**Status:** Tracked. Need to investigate whether this is a TM issue
+(temp file rename strategy) or a CLI issue (should detect non-regular
+file and use a different write path). Python doesn't use temp files for
+downloads — it writes directly to the target path.
+
 ## `--no-verify-ssl`
 
 **Impact:** All commands when SSL verification is disabled.

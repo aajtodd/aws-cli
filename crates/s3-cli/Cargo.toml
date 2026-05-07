@@ -6,6 +6,11 @@ license = "Apache-2.0"
 description = "Native Rust implementation of the aws s3 CLI subcommand"
 publish = false
 
+[profile.release]
+# opt-level = "z"     # Optimize for size (use "s" for a slight speed/size balance)
+lto = true          # Enable Link Time Optimization (can be "thin" or "fat")
+codegen-units = 1   # Maximize optimization opportunities across the whole crate
+
 [[bin]]
 name = "aws"
 path = "src/main.rs"
@@ -16,7 +21,7 @@ path = "src/lib.rs"
 
 [dependencies]
 aws-config = { version = "1", default-features = false, features = ["rt-tokio", "default-https-client", "sso", "credentials-process"] }
-aws-sdk-s3 = "1"
+aws-sdk-s3 = { version = "1" }
 aws-smithy-types = "1"
 clap = { version = "4", features = ["derive"] }
 tokio = { version = "1", features = ["rt", "rt-multi-thread", "macros"] }
