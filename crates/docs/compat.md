@@ -486,7 +486,12 @@ with `mfa_serial` will silently fail or return a cryptic STS error.
   time. Implementation path: custom `ResolveCachedIdentity` impl that
   wraps `LazyCache` with disk persistence at the same path. Pluggable
   via `ConfigLoader::identity_cache(...)`. Python and Rust CLIs would
-  share cache entries — nice interop win.
+  share cache entries — nice interop win. **Open question:** the SDK's
+  `ResolveCachedIdentity` trait may not have visibility into the
+  assume-role kwargs needed to compute the cache key (SHA-1 of sorted
+  JSON params). May need to wrap at the provider layer
+  (`StsAssumeRoleProvider`) instead of the cache layer. Needs
+  investigation of `aws-config`'s default credential chain internals.
 - **Error message wording:** Specific and informative in both, but
   different text. Scripts that match on error-message substrings will
   break.
