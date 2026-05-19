@@ -1,0 +1,14 @@
+[test]
+name = "basic"
+description = "mb creates a new S3 bucket"
+tags = ["mb", "bucket"]
+
+[command]
+args = ["s3", "mb", "s3://{bucket}"]
+
+[expected]
+exit_code = 0
+
+[expected.stdout]
+mode = "exact"
+value = "make_bucket: {bucket}\n"

@@ -1,0 +1,53 @@
+[test]
+name = "s3_to_local"
+description = "sync downloads new S3 objects to an empty local prefix"
+tags = ["sync", "download"]
+
+[[setup.buckets]]
+name = "{bucket}"
+
+[[setup.objects]]
+key = "a.txt"
+content = "aaaaaaaaaa"
+
+[[setup.objects]]
+key = "b.txt"
+content = "bbbbbbbbbb"
+
+[[setup.objects]]
+key = "c.txt"
+content = "cccccccccc"
+
+[command]
+args = ["s3", "sync", "s3://{bucket}/", "dst/"]
+
+[expected]
+exit_code = 0
+
+[expected.stdout]
+mode = "regex"
+value = [
+    "^Completed 30 Bytes/30 Bytes \\([^)]+\\) with 1 file\\(s\\) remaining$",
+    "^download: s3://\\{bucket\\}/a\\.txt to dst/a\\.txt$",
+    "^download: s3://\\{bucket\\}/b\\.txt to dst/b\\.txt$",
+    "^download: s3://\\{bucket\\}/c\\.txt to dst/c\\.txt$",
+]
+
+[expected.stderr]
+mode = "exact"
+value = ""
+
+[[expected.files]]
+path = "dst/a.txt"
+content = "aaaaaaaaaa"
+size = 10
+
+[[expected.files]]
+path = "dst/b.txt"
+content = "bbbbbbbbbb"
+size = 10
+
+[[expected.files]]
+path = "dst/c.txt"
+content = "cccccccccc"
+size = 10

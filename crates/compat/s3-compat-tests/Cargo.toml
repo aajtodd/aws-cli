@@ -1,0 +1,10 @@
+[package]
+name = "s3-compat-tests"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+s3-compat-spec = { path = "../s3-compat-spec" }
+tokio = { version = "1", features = ["full"] }
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+which = "7"

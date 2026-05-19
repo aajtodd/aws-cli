@@ -1,0 +1,49 @@
+[test]
+name = "local_to_s3_delete"
+description = "sync --delete removes S3 objects not present in local source"
+tags = ["sync", "upload", "delete"]
+# prod_only until mock's direct-seeding path (add_object_with) produces realistic
+# ETag + LastModified matching the HTTP PutObject handler. Without that, sync's
+# comparator on mock sees seeded "keep.txt" as stale and re-uploads it, masking
+# the --delete behavior we want to assert. Tracked in mock-server-extensions.md
+# Phase 2 ("Direct seeding path computes ETag and default checksum").
+target = "prod_only"
+
+[[setup.buckets]]
+name = "{bucket}"
+
+# S3 has two objects
+[[setup.objects]]
+key = "keep.txt"
+content = "keeper"
+
+[[setup.objects]]
+key = "remove.txt"
+content = "goner"
+
+# Local source has only keep.txt
+[[setup.files]]
+path = "src/keep.txt"
+content = "keeper"
+
+[command]
+args = ["s3", "sync", "src/", "s3://{bucket}/", "--delete"]
+
+[expected]
+exit_code = 0
+
+[expected.stdout]
+mode = "exact"
+value = "delete: s3://{bucket}/remove.txt\n"
+
+[expected.stderr]
+mode = "exact"
+value = ""
+
+[[expected.objects]]
+key = "keep.txt"
+content = "keeper"
+
+[[expected.objects]]
+key = "remove.txt"
+exists = false

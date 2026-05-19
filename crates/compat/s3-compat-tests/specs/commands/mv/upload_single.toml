@@ -1,0 +1,38 @@
+[test]
+name = "upload_single"
+description = "mv uploads local file to S3 and deletes the source"
+tags = ["mv", "upload"]
+
+[[setup.buckets]]
+name = "{bucket}"
+
+[[setup.files]]
+path = "hello.txt"
+content = "hello world"
+
+[command]
+args = ["s3", "mv", "hello.txt", "s3://{bucket}/hello.txt"]
+
+[expected]
+exit_code = 0
+
+[expected.stdout]
+mode = "regex"
+value = [
+    "^Completed 11 Bytes/11 Bytes \\([^)]+\\) with 1 file\\(s\\) remaining$",
+    "^move: \\./hello\\.txt to s3://\\{bucket\\}/hello\\.txt$",
+]
+
+[expected.stderr]
+mode = "exact"
+value = ""
+
+[[expected.objects]]
+key = "hello.txt"
+content = "hello world"
+content_type = "text/plain"
+upload_method = "put_object"
+
+[[expected.files]]
+path = "hello.txt"
+exists = false

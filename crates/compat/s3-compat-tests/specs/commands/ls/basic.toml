@@ -1,0 +1,23 @@
+[test]
+name = "basic"
+description = "ls lists objects with date/size/key column formatting"
+tags = ["ls", "output-format"]
+
+[[setup.objects]]
+key = "file1.txt"
+content = "hello"
+last_modified = "2024-06-15T14:30:00Z"
+
+[[setup.objects]]
+key = "file2.txt"
+content = "hello world"
+last_modified = "2024-06-15T14:31:00Z"
+
+[command]
+args = ["s3", "ls", "s3://{bucket}/"]
+
+[expected]
+exit_code = 0
+
+[expected.stdout]
+mode = "golden"

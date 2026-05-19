@@ -1,0 +1,21 @@
+[test]
+name = "nonexistent"
+description = "rm on a nonexistent object succeeds (S3 DeleteObject is idempotent)"
+tags = ["rm", "delete", "idempotent"]
+
+[[setup.buckets]]
+name = "{bucket}"
+
+[command]
+args = ["s3", "rm", "s3://{bucket}/does-not-exist.txt"]
+
+[expected]
+exit_code = 0
+
+[expected.stdout]
+mode = "exact"
+value = "delete: s3://{bucket}/does-not-exist.txt\n"
+
+[[expected.objects]]
+key = "does-not-exist.txt"
+exists = false

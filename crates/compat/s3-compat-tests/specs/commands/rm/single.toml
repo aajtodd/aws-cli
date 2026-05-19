@@ -1,0 +1,25 @@
+[test]
+name = "single"
+description = "rm deletes an S3 object"
+tags = ["rm", "delete"]
+
+[[setup.buckets]]
+name = "{bucket}"
+
+[[setup.objects]]
+key = "hello.txt"
+content = "hello world"
+
+[command]
+args = ["s3", "rm", "s3://{bucket}/hello.txt"]
+
+[expected]
+exit_code = 0
+
+[expected.stdout]
+mode = "exact"
+value = "delete: s3://{bucket}/hello.txt\n"
+
+[[expected.objects]]
+key = "hello.txt"
+exists = false

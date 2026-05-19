@@ -1,0 +1,17 @@
+[test]
+name = "empty"
+description = "rb removes an empty S3 bucket"
+tags = ["rb", "bucket"]
+
+[[setup.buckets]]
+name = "{bucket}"
+
+[command]
+args = ["s3", "rb", "s3://{bucket}"]
+
+[expected]
+exit_code = 0
+
+[expected.stdout]
+mode = "exact"
+value = "remove_bucket: {bucket}\n"

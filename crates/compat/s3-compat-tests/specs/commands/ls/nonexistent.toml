@@ -1,0 +1,17 @@
+[test]
+name = "nonexistent"
+description = "ls on a bucket that doesn't exist returns NoSuchBucket error"
+tags = ["ls", "error-handling"]
+
+[command]
+args = ["s3", "ls", "s3://this-bucket-does-not-exist-12345/"]
+
+[expected]
+exit_code = 254
+
+[expected.stdout]
+mode = "exact"
+value = ""
+
+[expected.stderr]
+mode = "golden"

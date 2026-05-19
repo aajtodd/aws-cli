@@ -1,0 +1,29 @@
+[test]
+name = "upload_single_dryrun"
+description = "cp --dryrun emits (dryrun) prefix and does not upload"
+tags = ["cp", "upload", "dryrun"]
+
+[[setup.buckets]]
+name = "{bucket}"
+
+[[setup.files]]
+path = "hello.txt"
+content = "hello world"
+
+[command]
+args = ["s3", "cp", "hello.txt", "s3://{bucket}/hello.txt", "--dryrun"]
+
+[expected]
+exit_code = 0
+
+[expected.stdout]
+mode = "exact"
+value = "(dryrun) upload: ./hello.txt to s3://{bucket}/hello.txt\n"
+
+[expected.stderr]
+mode = "exact"
+value = ""
+
+[[expected.objects]]
+key = "hello.txt"
+exists = false

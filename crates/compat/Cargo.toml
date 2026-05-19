@@ -1,0 +1,3 @@
+[workspace]
+members = ["s3-compat-spec", "s3-compat-tests"]
+resolver = "2"

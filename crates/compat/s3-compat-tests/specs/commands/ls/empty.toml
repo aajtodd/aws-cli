@@ -1,0 +1,17 @@
+[test]
+name = "empty"
+description = "ls on an empty bucket produces no output"
+tags = ["ls", "output-format"]
+
+[[setup.buckets]]
+name = "{bucket}"
+
+[command]
+args = ["s3", "ls", "s3://{bucket}/"]
+
+[expected]
+exit_code = 0
+
+[expected.stdout]
+mode = "exact"
+value = ""

@@ -1,0 +1,33 @@
+[test]
+name = "prefix"
+description = "ls with prefix shows objects and common prefixes (directories)"
+tags = ["ls", "output-format", "prefix"]
+
+[[setup.objects]]
+key = "photos/cat.jpg"
+content = "cat"
+last_modified = "2024-06-15T10:00:00Z"
+
+[[setup.objects]]
+key = "photos/dog.jpg"
+content = "dog"
+last_modified = "2024-06-15T10:01:00Z"
+
+[[setup.objects]]
+key = "docs/readme.txt"
+content = "readme"
+last_modified = "2024-06-15T10:02:00Z"
+
+[[setup.objects]]
+key = "root.txt"
+content = "root"
+last_modified = "2024-06-15T10:03:00Z"
+
+[command]
+args = ["s3", "ls", "s3://{bucket}/"]
+
+[expected]
+exit_code = 0
+
+[expected.stdout]
+mode = "golden"

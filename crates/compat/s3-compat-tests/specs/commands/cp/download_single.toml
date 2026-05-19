@@ -1,0 +1,28 @@
+[test]
+name = "download_single"
+description = "cp downloads an S3 object to a local file"
+tags = ["cp", "download"]
+
+[[setup.objects]]
+key = "hello.txt"
+content = "hello world"
+content_type = "text/plain"
+
+[command]
+args = ["s3", "cp", "s3://{bucket}/hello.txt", "hello.txt"]
+
+[expected]
+exit_code = 0
+
+[expected.stdout]
+mode = "regex"
+value = [
+    "^Completed 11 Bytes/11 Bytes \\([^)]+\\) with 1 file\\(s\\) remaining$",
+    "^download: s3://\\{bucket\\}/hello\\.txt to \\./hello\\.txt$",
+]
+
+[[expected.files]]
+path = "hello.txt"
+exists = true
+content = "hello world"
+size = 11

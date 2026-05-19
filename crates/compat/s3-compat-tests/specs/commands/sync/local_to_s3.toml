@@ -1,0 +1,49 @@
+[test]
+name = "local_to_s3"
+description = "sync uploads new local files to an empty S3 prefix"
+tags = ["sync", "upload"]
+
+[[setup.buckets]]
+name = "{bucket}"
+
+[[setup.files]]
+path = "src/a.txt"
+content = "aaaaaaaaaa"
+
+[[setup.files]]
+path = "src/b.txt"
+content = "bbbbbbbbbb"
+
+[[setup.files]]
+path = "src/c.txt"
+content = "cccccccccc"
+
+[command]
+args = ["s3", "sync", "src/", "s3://{bucket}/"]
+
+[expected]
+exit_code = 0
+
+[expected.stdout]
+mode = "regex"
+value = [
+    "^Completed 30 Bytes/30 Bytes \\([^)]+\\) with 1 file\\(s\\) remaining$",
+    "^upload: src/a\\.txt to s3://\\{bucket\\}/a\\.txt$",
+    "^upload: src/b\\.txt to s3://\\{bucket\\}/b\\.txt$",
+    "^upload: src/c\\.txt to s3://\\{bucket\\}/c\\.txt$",
+]
+
+[[expected.objects]]
+key = "a.txt"
+content = "aaaaaaaaaa"
+content_type = "text/plain"
+
+[[expected.objects]]
+key = "b.txt"
+content = "bbbbbbbbbb"
+content_type = "text/plain"
+
+[[expected.objects]]
+key = "c.txt"
+content = "cccccccccc"
+content_type = "text/plain"

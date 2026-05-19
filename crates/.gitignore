@@ -1,2 +1,3 @@
 /target
+/compat/target
 Cargo.lock
