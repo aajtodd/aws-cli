@@ -3,6 +3,8 @@
 Reference for the Python AWS CLI's S3 implementation. This documents the
 behavior we need to match, extracted from `awscli/customizations/s3/`.
 
+> Based on aws-cli 2.34.34 (`6cdc68ba6`). Re-verify after major version bumps.
+
 ## Command Surface
 
 Nine subcommands, three complexity tiers:

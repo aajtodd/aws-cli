@@ -1,98 +1,73 @@
 # aws s3 — Native Rust Implementation
 
-A native Rust implementation of the `aws s3` CLI, built on the
+A drop-in replacement for `aws s3`, built on the
 [AWS SDK for Rust](https://github.com/awslabs/aws-sdk-rust) and the
 [S3 Transfer Manager](https://github.com/awslabs/aws-s3-transfer-manager-rs).
+The goal is 100% behavioral compatibility with the Python CLI — same
+output, same exit codes, same edge cases — with native performance.
 
-## Architecture
+## Quick Start
 
-```
-main.rs          CLI entry point, arg parsing, SDK config, tracing
-  ├── cli.rs     clap definitions (GlobalArgs, per-command Args)
-  ├── config.rs  SDK config builders (HTTP client, timeouts, [s3] sub-section)
-  ├── context.rs AppContext (S3 client, SdkConfig, globals, terminal)
-  └── lib.rs     dispatch: handle_s3_cmd(S3Command, &AppContext) -> u8
-
-commands/
-  ├── ls.rs      ListBuckets / ListObjectsV2
-  ├── cp.rs      Upload / download via Transfer Manager
-  ├── mb.rs      CreateBucket
-  ├── rb.rs      DeleteBucket
-  ├── rm.rs      DeleteObject (single + recursive)
-  ├── presign.rs GetObject presigned URL
-  └── website.rs Get/PutBucketWebsite
-
-uri.rs           S3 URI + access point ARN parsing
-arn.rs           Dedicated ARN structural parser (no regex)
-paths.rs         Local path display (Python relative_path parity)
-format.rs        Date/size formatting (Python parity)
-term.rs          Terminal abstraction (stdout/stderr, testable)
-error.rs         CommandError type, exit code policy
+```sh
+cd crates/
+cargo build --release
+./target/release/aws s3 ls                              # list buckets
+./target/release/aws s3 cp file.txt s3://bucket/key     # upload
+./target/release/aws s3 cp s3://bucket/key file.txt     # download
 ```
 
-Transfer commands (cp, mv, sync) use the S3 Transfer Manager's managed
-runtime — per-thread tokio runtimes with CPU-pinned HTTP clients for
-bandwidth saturation. Non-transfer commands use the SDK S3 client
-directly.
+Global flags (`--region`, `--profile`, `--endpoint-url`, `--debug`, etc.)
+work the same as the Python CLI. Unimplemented features exit 252 with a
+stderr message.
 
 ## Build and Test
 
 ```sh
-cd crates/
-cargo build
 cargo test -p s3-cli
 cargo clippy --all-targets
 ```
 
-The binary is at `target/debug/aws` (or `target/release/aws`).
+## Verifying Compatibility
+
+The `compat/` sibling directory has a backwards-compatibility test
+framework. It runs declarative TOML specs against both the Python CLI
+(baseline) and this binary, asserting identical observable behavior.
 
 ```sh
-# Smoke test against real S3
-AWS_PROFILE=your-profile ./target/debug/aws --region us-east-2 s3 ls
+cd ../compat/
+COMPAT_CLI_BINARY=../target/release/aws ./compat.sh test
 ```
 
-See `docs/smoke-testing.md` for comprehensive manual test recipes.
+See `../compat/README.md` for the full workflow.
 
-## Current State
+## Code Layout
 
-**Commands:** ls, mb, rb, rm, presign, website — complete. cp upload +
-download single-file — working via TM. mv, sync, cp recursive — not
-yet implemented (blocked on TM upstream work).
-
-**Global flags:** `--region`, `--endpoint-url`, `--profile`,
-`--no-sign-request`, `--cli-read-timeout`, `--cli-connect-timeout`,
-`--debug` — wired. `--no-verify-ssl`, `--ca-bundle` — rejected at
-arg-parse (upstream SDK gaps).
-
-**Config:** `[s3]` sub-section parsing helper exists but is not yet
-wired into client construction. SDK-mapped keys (`addressing_style`,
-`use_accelerate_endpoint`, `use_arn_region`, etc.) are the next
-wiring target.
-
-**Tests:** 214 passing + 6 ignored, zero clippy warnings.
+```
+src/
+  main.rs        Entry point: arg parsing, SDK config, tracing setup
+  lib.rs         handle_s3_cmd() dispatch, exit code constants
+  cli.rs         clap definitions (GlobalArgs, CpArgs, LsArgs, etc.)
+  config.rs      [s3] config key parsing, HTTP client/timeout builders
+  context.rs     AppContext — holds S3 client, SDK config, terminal
+  commands/      One module per subcommand (ls.rs, cp.rs, mv.rs, ...)
+  transfer.rs    Transfer Manager client builder, upload/download, MIME guessing
+  redirect.rs    Cross-region redirect interceptor
+  error.rs       CommandError type, exit code mapping
+  uri.rs         S3 URI parsing (s3://bucket/key)
+  arn.rs         Access point ARN parser
+  paths.rs       Relative path display (matches Python's os.path.relpath)
+  format.rs      Date/size formatting (matches Python's column widths)
+  term.rs        Terminal abstraction (testable stdout/stderr)
+```
 
 ## Documentation
 
-| Doc | Purpose |
-|-----|---------|
-| `docs/design.md` | Architecture, module layout, runtime, dependencies |
-| `docs/research.md` | Python CLI reference (commands, args, output formats) |
-| `docs/compat.md` | SDK vs botocore behavioral differences — the ship-gate ledger |
-| `docs/s3-config-keys.md` | Every `[s3]` config key + `AWS_S3_*` env var, classified |
-| `docs/test-traceability.md` | Python→Rust test mapping, exit codes, known gaps |
+| Doc | What it's for |
+|-----|---------------|
+| `docs/compat.md` | Every known behavioral gap — the ship-gate checklist |
+| `docs/design.md` | Architecture decisions and module responsibilities |
+| `docs/research.md` | Python CLI reference (how it works internally) |
 | `docs/exit-codes.md` | Exit code contract |
-| `docs/smoke-testing.md` | Manual test recipes for flag behaviors |
-
-## Dependencies
-
-- `aws-config` (explicit features: `rt-tokio`, `default-https-client`, `sso`, `credentials-process`)
-- `aws-sdk-s3`
-- `aws-s3-transfer-manager` (git dep, branch `s3-tm-vnext`)
-- `aws-smithy-http-client` (rustls + aws-lc)
-- `aws-smithy-types`, `aws-smithy-runtime-api`
-- `aws-runtime`, `aws-types`
-- `clap` (derive)
-- `tokio` (multi-thread runtime)
-- `tracing-subscriber` (fmt, env-filter — for `--debug`)
-- `thiserror`
-- `rustls`, `rustls-pemfile` (retained for CA bundle re-enable path)
+| `docs/s3-config-keys.md` | All `[s3]` config keys and their status |
+| `docs/smoke-testing.md` | Manual verification recipes |
+| `docs/test-traceability.md` | Python test → Rust test mapping |

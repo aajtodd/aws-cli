@@ -35,22 +35,23 @@ compat/                                 # repo root
     ├── src/
     │   └── lib.rs                      # shared runtime, run_spec_file, TestHarness singleton
     └── specs/                          # one TOML file per spec; golden files alongside
-        └── commands/
-            ├── ls/
-            ├── cp/
-            ├── sync/
-            ├── rm/
-            ├── mb/
-            ├── rb/
-            └── ...
+        ├── commands/
+        │   ├── ls/
+        │   ├── cp/
+        │   ├── sync/
+        │   ├── rm/
+        │   ├── mb/
+        │   ├── rb/
+        │   └── ...
+        └── dimensions/                 # cross-cutting behavioral specs
+            └── content_type/
 ```
 
 ## Key Paths Outside This Directory
 
-- `../../../s3-tm-vnext-mock` (relative) or
-  [`awslabs/aws-s3-transfer-manager-rs`](https://github.com/awslabs/aws-s3-transfer-manager-rs)
-  on the `s3-tm-vnext-mock` branch — s3-mock-server source.
-  Path-dependency from this directory's `Cargo.toml`. Edit there for mock fidelity
+- [`awslabs/aws-s3-transfer-manager-rs`](https://github.com/awslabs/aws-s3-transfer-manager-rs)
+  on the `s3-tm-vnext` branch — s3-mock-server source.
+  Git dependency in `s3-compat-spec/Cargo.toml`. Edit there for mock fidelity
   fixes or new S3 operations.
 - `../docs/` — CLI design docs, compat docs, research.
 

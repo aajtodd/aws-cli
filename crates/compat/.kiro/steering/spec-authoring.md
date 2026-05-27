@@ -27,7 +27,7 @@ For every new spec, in this order:
    mock probe), that's a mock fidelity gap. Triage:
    - Fix mock fidelity (edit the upstream s3-mock-server repo —
      [`awslabs/aws-s3-transfer-manager-rs`](https://github.com/awslabs/aws-s3-transfer-manager-rs)
-     branch `s3-tm-vnext-mock`).
+     branch `s3-tm-vnext`).
    - Mark spec `target = "mock_only"` (rare — needs justification).
    - Adjust assertions to wildcard legitimate prod-only variance
      (e.g. timestamps, transfer rates).

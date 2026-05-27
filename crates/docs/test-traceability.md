@@ -5,9 +5,8 @@ are the source of truth for behavioral correctness.
 
 Status key:
 - ✅ Ported — equivalent Rust test exists
-- ⏳ Pending — command not yet implemented
+- ⏳ Pending — behavior not yet implemented
 - ➖ N/A — not applicable (SDK-level, Python-specific, or out of scope)
-- ❌ Missing — should exist but doesn't
 
 ## functional/s3/test_ls_command.py
 
@@ -24,12 +23,12 @@ Status key:
 | `test_success_rc_with_pagination` | `ls::tests::run_pagination_with_empty_second_page_returns_0` | ✅ |
 | `test_success_rc_empty_bucket_no_key_given` | `ls::tests::run_empty_bucket_returns_0` | ✅ |
 | `test_fail_rc_no_objects_nor_prefixes` | `ls::tests::run_no_match_returns_1` | ✅ |
-| `test_human_readable_file_size` | `format::tests::human_readable_*` (11 tests) | ✅ |
+| `test_human_readable_file_size` (11 cases) | `format::tests::human_readable_*` (12 tests) | ✅ |
 | `test_summarize` | `ls::tests::run_summarize` | ✅ |
 | `test_summarize_with_human_readable` | `ls::tests::run_summarize_human_readable` | ✅ |
 | `test_requester_pays` | `ls::tests::run_list_objects_request_payer` | ✅ |
 | `test_requester_pays_with_no_args` | `cli::tests::ls_request_payer_bare_flag_defaults_to_requester` | ✅ |
-| `test_accesspoint_arn` | `uri::tests::arn_standard_access_point_*` (covers parse; SDK handles endpoint routing) | ✅ |
+| `test_accesspoint_arn` | `uri::tests::arn_standard_access_point_*` | ✅ |
 | `test_list_buckets_uses_bucket_name_prefix` | `ls::tests::run_list_buckets_with_prefix_filter` | ✅ |
 | `test_list_buckets_uses_bucket_region` | `ls::tests::run_list_buckets_with_region_filter` | ✅ |
 | `test_list_objects_ignores_bucket_name_prefix` | `ls::tests::run_list_objects_ignores_bucket_name_prefix` | ✅ |
@@ -48,37 +47,16 @@ Status key:
 | `test_ls_with_verify_argument` | — | ➖ SSL verify handled by SDK config |
 | `test_ls_with_requester_pays` | `ls::tests::run_list_objects_request_payer` | ✅ |
 
-### RbCommand tests
-
-| Python Test | Rust Equivalent | Status |
-|-------------|-----------------|--------|
-| `test_rb_command_with_force_deletes_objects_in_bucket` | — | ⏳ rb not implemented |
-| `test_rb_command_with_force_requires_strict_path` | — | ⏳ |
-
 ### CommandParameters (path validation)
 
 | Python Test | Rust Equivalent | Status |
 |-------------|-----------------|--------|
 | `test_check_path_type_pass` | `uri::tests::path_type_valid_*` | ✅ |
 | `test_check_path_type_fail` | `uri::tests::path_type_*_rejects_invalid` | ✅ |
-| `test_validate_streaming_paths_upload` | — | ⏳ Streaming not implemented |
-| `test_validate_streaming_paths_download` | — | ⏳ |
-| `test_validate_streaming_paths_with_no_overwrite` | — | ⏳ |
-| `test_validate_no_streaming_paths` | — | ⏳ |
-| `test_validate_streaming_paths_error` | — | ⏳ |
-| `test_validate_checksum_algorithm_download_error` | — | ⏳ |
-| `test_validate_checksum_algorithm_sync_download_error` | — | ⏳ |
-| `test_validate_checksum_mode_upload_error` | — | ⏳ |
-| `test_validate_checksum_mode_sync_upload_error` | — | ⏳ |
-| `test_validate_checksum_mode_move_error` | — | ⏳ |
-| `test_validate_non_existent_local_path_upload` | — | ⏳ |
-| `test_add_path_for_non_existsent_local_path_download` | — | ⏳ |
-| `test_validate_sse_c_args_missing_sse` | — | ⏳ |
-| `test_validate_sse_c_args_missing_sse_c_key` | — | ⏳ |
-| `test_validate_sse_c_args_missing_sse_c_copy_source` | — | ⏳ |
-| `test_validate_sse_c_args_missing_sse_c_copy_source_key` | — | ⏳ |
-| `test_validate_sse_c_args_wrong_path_type` | — | ⏳ |
-| `test_adds_is_move` | — | ⏳ mv not implemented |
+| `test_validate_streaming_paths_*` (5 tests) | — | ⏳ Streaming not implemented |
+| `test_validate_checksum_*` (5 tests) | — | ⏳ Checksum validation not implemented |
+| `test_validate_non_existent_local_path_*` | — | ⏳ |
+| `test_validate_sse_c_args_*` (5 tests) | — | ⏳ SSE-C not implemented |
 
 ## unit/customizations/s3/test_utils.py
 
@@ -87,7 +65,7 @@ Status key:
 | Python Test | Rust Equivalent | Status |
 |-------------|-----------------|--------|
 | `test_human_readable_size` (11 cases) | `format::tests::human_readable_*` (12 tests) | ✅ |
-| `test_convert_human_readable_to_int` (12 cases) | — | ⏳ Transfer config not implemented |
+| `test_convert_human_readable_to_int` (12 cases) | `config::tests::parse_human_readable_size_*` | ✅ |
 
 ### URI / bucket-key parsing
 
@@ -99,10 +77,8 @@ Status key:
 | `test_bucket_with_key` | `uri::tests::bucket_and_key` | ✅ |
 | `test_bucket_with_key_and_prefix` | `uri::tests::bucket_and_key` | ✅ |
 | `test_accesspoint_arn` | `uri::tests::arn_standard_access_point_no_key` | ✅ |
-| `test_accesspoint_arn_with_slash` | `uri::tests::arn_standard_access_point_no_key` (trailing-slash equivalent covered by Python regex; our parser handles via `/` separator) | ✅ |
 | `test_accesspoint_arn_with_key` | `uri::tests::arn_standard_access_point_with_key` | ✅ |
-| `test_accesspoint_arn_with_key_and_prefix` | `uri::tests::arn_standard_access_point_deeply_nested_key` | ✅ |
-| `test_outpost_arn_*` (8 tests) | `uri::tests::arn_outposts_access_point_*` (3 tests) + `arn_outposts_bucket_rejected` + `arn_outposts_all_colon_separators` | ✅ |
+| `test_outpost_arn_*` (8 tests) | `uri::tests::arn_outposts_access_point_*` | ✅ |
 | `test_object_lambda_arn_*` (2 tests) | `uri::tests::arn_object_lambda_rejected` | ✅ |
 | `test_outpost_bucket_arn_*` (2 tests) | `uri::tests::arn_outposts_bucket_rejected` | ✅ |
 
@@ -110,10 +86,8 @@ Status key:
 
 | Python Test | Rust Equivalent | Status |
 |-------------|-----------------|--------|
-| `test_guess_content_type*` | — | ⏳ Content-type detection not implemented |
-| `test_relpath_*` | — | ⏳ Path handling not implemented |
-| `test_*_request_params_*` | — | ⏳ Request param mapping not implemented |
-| `test_resolves_*` (ARN resolution) | — | ⏳ |
+| `test_guess_content_type*` | `transfer::guess_content_type` + compat dimension specs | ✅ |
+| `test_relpath_*` | `paths::tests::*` (11 tests) | ✅ |
 
 ## functional/s3/test_mb_command.py
 
@@ -131,7 +105,7 @@ Status key:
 | `test_account_regional_namespace_bucket_us_east_1` | `mb::tests::account_regional_namespace_us_east_1` | ✅ |
 | `test_account_regional_namespace_short_bucket_name` | `mb::tests::short_an_bucket` | ✅ |
 | `test_regular_bucket_no_namespace` | `mb::tests::regular_bucket_no_namespace` | ✅ |
-| `test_tags_with_three_arguments_fails` | `cli::tests::mb_missing_path_is_error` | ✅ Clap rejects extra args |
+| `test_tags_with_three_arguments_fails` | `cli::tests::mb_missing_path_is_error` | ✅ |
 
 ## functional/s3/test_rb_command.py
 
@@ -163,9 +137,8 @@ Status key:
 | `test_generates_a_url` | `presign::tests::generates_url` | ✅ |
 | `test_handles_non_dns_compatible_buckets` | `presign::tests::non_dns_compatible_bucket_falls_back_to_path_style` | ✅ |
 | `test_handles_expires_in` | `presign::tests::custom_expires_in` | ✅ |
-| `test_handles_sigv4` | — | ➖ Rust SDK uses sigv4 by default; no opt-in |
+| `test_handles_sigv4` | — | ➖ Rust SDK uses sigv4 by default |
 | `test_s3_prefix_not_needed` | `presign::tests::s3_prefix_not_required` | ✅ |
-| `test_can_support_addressing_mode_config` | — | ⏳ `--addressing-style` / `s3.addressing_style` config not wired |
 
 ## functional/s3/test_website_command.py
 
@@ -174,46 +147,32 @@ Status key:
 | `test_index_document` | `website::tests::index_document` | ✅ |
 | `test_error_document` | `website::tests::error_document` | ✅ |
 
-## functional/s3/ — Other commands
+## functional/s3/ — Transfer commands (not yet ported)
 
-| File | Tests | Status |
-|------|-------|--------|
-| `test_cp_command.py` | ~50 tests | ⏳ cp not implemented |
-| `test_mv_command.py` | ~20 tests | ⏳ mv not implemented |
-| `test_sync_command.py` | ~30 tests | ⏳ sync not implemented |
-
-## unit/customizations/test_s3errormsg.py
-
-| Python Test | Rust Equivalent | Status |
-|-------------|-----------------|--------|
-| `test_301_error_message` | — | ❌ Cross-region redirect not implemented |
-| `test_kms_sigv4_error_message` | — | ➖ Handled differently in Rust SDK |
-| `test_error_message_not_enhanced` | — | ❌ |
+| File | Approximate test count | Status |
+|------|------------------------|--------|
+| `test_cp_command.py` | ~50 tests | ⏳ |
+| `test_mv_command.py` | ~20 tests | ⏳ |
+| `test_sync_command.py` | ~30 tests | ⏳ |
 
 ## unit/customizations/test_globalargs.py
 
-Python test file is the authoritative reference for each global flag's
-behavior (value parsing, handler registration, precedence). Our wiring
-lives in `main.rs::build_context` and `config.rs`; parser tests live in
-`cli::tests::globals_*`.
-
 | Python Test | Rust Equivalent | Status |
 |-------------|-----------------|--------|
-| `test_no_sign_request_if_option_specified` | `main.rs::build_context` → `ConfigLoader::no_credentials()` | ✅ (wiring; SDK effect smoke-tested against public bucket, see `smoke-testing.md`) |
+| `test_no_sign_request_if_option_specified` | `main.rs::build_context` → `no_credentials()` | ✅ |
 | `test_request_signed_by_default` | Default `GlobalArgs` does not set `no_credentials()` | ✅ |
 | `test_cli_read_timeout` | `config::tests::timeout_config_set_both` | ✅ |
 | `test_cli_connect_timeout` | `config::tests::timeout_config_set_both` | ✅ |
 | `test_cli_read_timeout_for_blocking` | `config::tests::timeout_config_zero_means_disabled` | ✅ |
 | `test_cli_connect_timeout_for_blocking` | `config::tests::timeout_config_zero_means_disabled` | ✅ |
-| `test_parse_verify_ssl_default_value` | `cli::tests::globals_default_values` | ✅ (parser only) |
-| `test_parse_verify_ssl_verify_turned_off` | — | ❌ (flag rejected at arg-parse) |
-| `test_cli_overrides_cert_bundle` | — | ❌ (flag rejected at arg-parse) |
-| `test_cli_overrides_env_cert_bundle` | — | ❌ (flag rejected at arg-parse) |
-| `test_no_verify_ssl_overrides_cli_cert_bundle` | — | ❌ (both flags rejected at arg-parse) |
+| `test_parse_verify_ssl_default_value` | `cli::tests::globals_default_values` | ✅ |
+| `test_parse_verify_ssl_verify_turned_off` | — | ⏳ Flag rejected at arg-parse |
+| `test_cli_overrides_cert_bundle` | — | ⏳ Flag rejected at arg-parse |
 
 ## Rust-only tests (no Python equivalent)
 
-These test Rust-specific concerns or expand coverage beyond the Python suite.
+Tests that cover Rust-specific concerns or expand coverage beyond the
+Python suite.
 
 | Rust Test | What it tests |
 |-----------|---------------|
@@ -221,55 +180,13 @@ These test Rust-specific concerns or expand coverage beyond the Python suite.
 | `cli::tests::globals_*` (6 tests) | Global flag parsing (before/after subcommand, defaults) |
 | `cli::tests::*_missing_*_is_error` (6 tests) | Missing required args for each command |
 | `uri::tests::transfer_uri_*` (3 tests) | TransferUri enum parsing and Display |
-| `uri::tests::arn_*` (16 tests) | Access point ARN parsing (standard, MRAP, Outposts, Object Lambda rejection, partition variants, colon-sep, deep keys, Display roundtrip) |
-| `arn::tests::*` (7 tests) | `Arn::parse` unit tests (field extraction + 4 error variants) |
+| `uri::tests::arn_*` (16 tests) | Access point ARN parsing (standard, MRAP, Outposts, Object Lambda, partitions) |
+| `arn::tests::*` (7 tests) | `Arn::parse` unit tests (field extraction + error variants) |
 | `uri::tests::path_type_error_format_matches_cli` | Error message format matches Python CLI |
 | `format::tests::format_datetime_*` (4 tests) | Date formatting correctness |
 | `format::tests::format_size_*` (2 tests) | Size field alignment |
-| `format::tests::human_readable_zero` | Edge case: 0 bytes |
 | `term::test_util::tests::*` (9 tests) | InMemoryTerminal correctness |
 | `ls::tests::display_page_*` (5 tests) | Output formatting with known SDK types |
-| `paths::tests::*` (11 tests) | Relative-path formatting (matches `awscli/customizations/s3/utils.py::relative_path`) |
-| `config::tests::http_client_builds_default` | `build_http_client` produces a usable HTTP client |
-| `config::tests::timeout_config_*` (5 tests) | `--cli-read-timeout` / `--cli-connect-timeout` wiring, including Python's `0 = disabled` semantic |
-| `config::tests::ca_bundle_*` (6 tests, `#[ignore]`) | `build_ca_bundle_tls_context` error paths + valid PEM — kept ignored while `--ca-bundle` rejects at arg-parse |
-
-## Exit codes
-
-Source: `awscli/constants.py`
-
-| Code | Python Constant | Meaning | Rust Constant | Tested |
-|------|-----------------|---------|---------------|--------|
-| 0 | — | Success | — | ✅ |
-| 1 | — | S3 transfer task failure | `exit_code::FAILURE` | ✅ (ls no-match) |
-| 2 | — | S3 transfer task warning (glacier) | `exit_code::WARNING` | ⏳ |
-| 252 | `PARAM_VALIDATION_ERROR_RC` | Argument validation error | `exit_code::PARAM_VALIDATION_ERROR` | ✅ (clap errors) |
-| 253 | `CONFIGURATION_ERROR_RC` | Configuration error | `exit_code::CONFIGURATION_ERROR` | ⏳ |
-| 254 | `CLIENT_ERROR_RC` | Service/client error | `exit_code::CLIENT_ERROR` | ✅ (SDK errors) |
-| 255 | `GENERAL_ERROR_RC` | General error | `exit_code::GENERAL_ERROR` | ⏳ |
-
-## Known behavioral gaps
-
-These are differences between the Python CLI and our implementation that
-need resolution. Each should have a corresponding test when fixed. See
-`compat.md` for design-level detail and resolution paths.
-
-| Gap | Impact | Python Behavior | Our Behavior |
-|-----|--------|-----------------|--------------|
-| Cross-region bucket redirect | All S3 operations | Auto-redirects via HeadBucket | Returns 301 error |
-| Error message for 301 redirect | Error output | Enhanced with endpoint info | Raw error |
-| `--no-verify-ssl` | SDK config | Disables TLS verification | Rejected at arg-parse (smithy-rs has no public toggle) |
-| `--ca-bundle` | SDK config | Replaces system trust store | Rejected at arg-parse (TM per-thread HTTP clients have no TlsContext hook; rejecting is preferable to honoring on ls but not cp) |
-| `--cli-read-timeout` semantics | Timeouts | Per-socket-read | Time-to-first-byte from request start |
-| `--debug` output format | Log output | stdlib `logging` format | `tracing_subscriber::fmt` default (ANSI, ISO-8601) |
-| `--cli-auto-prompt` / `--no-cli-auto-prompt` | Missing-arg handling | Interactive prompt loop before dispatch | Parsed but ignored (no interactive prompting) |
-| IMDSv1 fallback | EC2 credential resolution | Supports both IMDSv1 and IMDSv2 | IMDSv2-only (`imds/client.rs` comment) |
-| MFA prompting for assume-role | Profiles with `mfa_serial` | Interactive `getpass` prompt | No MFA support at all — profile fails |
-| `AWS_DEFAULT_PROFILE` env var | Profile selection | Honored as fallback for `AWS_PROFILE` | Not honored |
-| `AWS_SECURITY_TOKEN` (legacy) | Credentials | Honored as fallback for `AWS_SESSION_TOKEN` | Not honored |
-| `AWS_CREDENTIAL_EXPIRATION` | Static creds with expiry | Honored | Not honored |
-| SSO / credential_process feature gating | Profiles using these | Always available | Require `sso` / `credentials-process` cargo features |
-| STS assume-role disk cache | Repeated invocations | JSONFileCache on disk | In-memory only |
-| S3-specific config keys | `~/.aws/config [s3]` + `AWS_S3_*` | botocore parses and applies | aws-config does not parse; we have not wired |
-| `payload_signing_enabled = true` | Upload operations | Honors explicit `true` — forces payload signing | TM unconditionally disables; no config hook to re-enable |
-| User agent format | All requests | Custom CLI format with feature tags | SDK default (audit pending) |
+| `paths::tests::*` (11 tests) | Relative-path formatting |
+| `config::tests::*` (12 tests) | HTTP client, timeouts, [s3] key parsing |
+| `redirect::tests::*` | Cross-region redirect interceptor |

@@ -54,46 +54,20 @@ signed and `--no-sign-request` is not working.
 
 ## TLS / CA Bundle
 
-### Recipe: `--ca-bundle` is currently rejected
+### Recipe: `--ca-bundle` and `--no-verify-ssl`
+
+Both flags are rejected at arg-parse time. They require upstream SDK/TM
+support that does not exist yet.
 
 ```sh
 ./target/debug/aws --ca-bundle /etc/ssl/cert.pem s3 ls
 # → exit 252, stderr: "--ca-bundle is not currently supported. ..."
+
+./target/debug/aws --no-verify-ssl s3 ls
+# → exit 252, stderr: "--no-verify-ssl is not currently supported. ..."
 ```
 
-`--ca-bundle` is rejected at arg-parse time while we wait for upstream
-TM to expose a `TlsContext` hook on `S3ClientConfig`. Honoring the flag
-only on non-TM commands (ls/mb/rb/...) while silently no-op'ing on
-cp/sync would be a compat trap; rejecting uniformly is safer. See
-`compat.md` §`--ca-bundle`.
-
-When the upstream change lands and we re-enable the flag, the following
-recipes will apply:
-
-```sh
-# macOS system bundle — smoke test that our custom HTTP client is plugged in
-AWS_PROFILE=your-profile ./target/debug/aws \
-  --ca-bundle /etc/ssl/cert.pem --region us-east-2 s3 ls
-
-# Linux
-AWS_PROFILE=your-profile ./target/debug/aws \
-  --ca-bundle /etc/ssl/certs/ca-certificates.crt --region us-east-2 s3 ls
-
-# Unrelated self-signed cert — expect TLS failure on BOTH ls and cp
-openssl req -x509 -newkey rsa:2048 -keyout /tmp/selfsigned.key \
-  -out /tmp/selfsigned.pem -days 1 -nodes -subj "/CN=localhost"
-
-AWS_PROFILE=your-profile ./target/debug/aws \
-  --ca-bundle /tmp/selfsigned.pem --region us-east-2 s3 ls
-# Expected: TLS verification failure.
-
-AWS_PROFILE=your-profile ./target/debug/aws \
-  --ca-bundle /tmp/selfsigned.pem --region us-east-2 \
-  s3 cp /tmp/some-file.txt s3://your-bucket/test.txt
-# Expected: TLS verification failure on the TM path too. If this
-# succeeds, the TM fast path is bypassing our TlsContext — the whole
-# reason we rejected the flag in the first place.
-```
+See `compat.md` for details on the upstream dependency.
 
 ## Timeouts
 

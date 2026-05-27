@@ -16,13 +16,13 @@ Two-crate Cargo workspace at the repo root:
   files alongside specs (`*.stdout.golden`, `*.stderr.golden`), a `build.rs`
   that generates one `#[test]` per spec.
 
-## External Dependency: s3-tm-vnext-mock
+## External Dependency: s3-mock-server
 
 The mock S3 server comes from a **separate repository**:
 [`awslabs/aws-s3-transfer-manager-rs`](https://github.com/awslabs/aws-s3-transfer-manager-rs)
-on the `s3-tm-vnext-mock` branch (crate `s3-mock-server/`). It's
-pulled in via a path dependency in `Cargo.toml` — clone it as a sibling
-of this repo. Changes to the mock server happen in that repo, not this one.
+on the `s3-tm-vnext` branch (crate `s3-mock-server/`). It's
+pulled in via a git dependency in `Cargo.toml`. Changes to the mock
+server happen in that repo, not this one.
 
 Common reasons to edit the mock repo:
 - Mock fidelity gaps discovered via `./compat.sh validate` (mock-vs-prod
