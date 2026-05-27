@@ -1,0 +1,21 @@
+[test]
+name = "no_guess_mime_type"
+description = "cp with --no-guess-mime-type skips inference — no content_type sent"
+tags = ["cp", "upload", "content-type"]
+
+[[setup.buckets]]
+name = "{bucket}"
+
+[[setup.files]]
+path = "notes.txt"
+content = "some plain text"
+
+[command]
+args = ["s3", "cp", "./notes.txt", "s3://{bucket}/notes.txt", "--no-guess-mime-type"]
+
+[expected]
+exit_code = 0
+
+[[expected.objects]]
+key = "notes.txt"
+content = "some plain text"

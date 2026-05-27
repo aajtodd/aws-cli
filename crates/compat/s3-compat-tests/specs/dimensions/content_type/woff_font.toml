@@ -1,0 +1,26 @@
+[test]
+name = "woff_font"
+description = "cp infers MIME type for .woff font files"
+tags = ["cp", "upload", "content-type"]
+
+[[setup.buckets]]
+name = "{bucket}"
+
+[[setup.files]]
+path = "icons.woff"
+size = 100
+
+[command]
+args = ["s3", "cp", "./icons.woff", "s3://{bucket}/icons.woff"]
+
+[expected]
+exit_code = 0
+
+[[expected.objects]]
+key = "icons.woff"
+content_type = "font/woff"
+
+[deviation]
+behavior = "mime_type_variant"
+rationale = "Python returns font/woff (from macOS /etc/apache2/mime.types). mime_guess2 returns application/font-woff. Both are valid IANA registrations for WOFF. Python returns None on platforms without the system MIME entry (see https://github.com/aws/aws-cli/issues/1249)."
+tracking_id = "https://github.com/aws/aws-cli/issues/1249"

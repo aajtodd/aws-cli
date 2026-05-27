@@ -31,6 +31,16 @@ pub(crate) fn build_tm(ctx: &AppContext) -> aws_sdk_s3_transfer_manager::Client 
     aws_sdk_s3_transfer_manager::Client::new(config)
 }
 
+/// Guess the MIME type for a file based on its extension.
+///
+/// Returns `None` for unknown extensions (S3 will default to
+/// `application/octet-stream`). Uses a compiled-in database via
+/// `mime_guess2` — deterministic across platforms unlike Python's
+/// `mimetypes` which reads system files.
+pub(crate) fn guess_content_type(path: &Path) -> Option<String> {
+    mime_guess2::from_path(path).first().map(|m| m.to_string())
+}
+
 /// Upload a single local file to S3.
 #[tracing::instrument(skip(ctx), fields(%bucket, %key, source = %source.display()))]
 pub(crate) async fn upload_single(
@@ -38,6 +48,7 @@ pub(crate) async fn upload_single(
     source: &Path,
     bucket: &str,
     key: &str,
+    content_type: Option<&str>,
 ) -> Result<(), CommandError> {
     let tm = build_tm(ctx);
 
@@ -46,16 +57,16 @@ pub(crate) async fn upload_single(
         CommandError::failure(format!("upload failed: {}", e)).with_source(e)
     })?;
 
-    let handle = tm
-        .upload()
-        .bucket(bucket)
-        .key(key)
-        .body(stream)
-        .initiate()
-        .map_err(|e| {
-            tracing::debug!(error = %e, "failed to initiate upload");
-            CommandError::failure(format!("upload failed: {}", e)).with_source(e)
-        })?;
+    let mut upload = tm.upload().bucket(bucket).key(key).body(stream);
+
+    if let Some(ct) = content_type {
+        upload = upload.content_type(ct);
+    }
+
+    let handle = upload.initiate().map_err(|e| {
+        tracing::debug!(error = %e, "failed to initiate upload");
+        CommandError::failure(format!("upload failed: {}", e)).with_source(e)
+    })?;
 
     handle.join().await.map_err(|e| {
         tracing::debug!(error = %e, "upload failed during transfer");

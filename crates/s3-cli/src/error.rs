@@ -202,6 +202,16 @@ impl CommandError {
     pub fn partial_failure() -> Self {
         Self::new(CommandErrorKind::Failure, "")
     }
+
+    /// Feature not yet implemented. Prints a clear message to stderr and
+    /// exits with PARAM_VALIDATION_ERROR (252) — same code Python uses for
+    /// unsupported argument combinations.
+    pub fn not_implemented(feature: &str) -> Self {
+        Self::new(
+            CommandErrorKind::ParamValidation,
+            format!("{feature} is not yet supported in this build."),
+        )
+    }
 }
 
 impl std::error::Error for CommandError {

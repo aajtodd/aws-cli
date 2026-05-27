@@ -1,0 +1,45 @@
+[test]
+name = "recursive_mixed"
+description = "cp --recursive infers content_type per file from extension"
+tags = ["cp", "upload", "content-type", "recursive"]
+
+[[setup.buckets]]
+name = "{bucket}"
+
+[[setup.files]]
+path = "src/file.html"
+content = "<html><body>page</body></html>"
+
+[[setup.files]]
+path = "src/image.png"
+size = 100
+
+[[setup.files]]
+path = "src/data.json"
+content = "{\"hello\": \"world\"}"
+
+[[setup.files]]
+path = "src/noext"
+content = "binary blob"
+
+[command]
+args = ["s3", "cp", "src/", "s3://{bucket}/", "--recursive"]
+
+[expected]
+exit_code = 0
+
+[[expected.objects]]
+key = "file.html"
+content_type = "text/html"
+
+[[expected.objects]]
+key = "image.png"
+content_type = "image/png"
+
+[[expected.objects]]
+key = "data.json"
+content_type = "application/json"
+
+[[expected.objects]]
+key = "noext"
+exists = true

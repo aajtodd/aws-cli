@@ -1,0 +1,26 @@
+[test]
+name = "wasm_binary"
+description = "cp infers application/wasm for .wasm files"
+tags = ["cp", "upload", "content-type"]
+
+[[setup.buckets]]
+name = "{bucket}"
+
+[[setup.files]]
+path = "module.wasm"
+size = 100
+
+[command]
+args = ["s3", "cp", "./module.wasm", "s3://{bucket}/module.wasm"]
+
+[expected]
+exit_code = 0
+
+[[expected.objects]]
+key = "module.wasm"
+content_type = "application/wasm"
+
+[deviation]
+behavior = "improved_mime_coverage"
+rationale = "Python's mimetypes.guess_type() may return None for .wasm depending on platform/version. mime_guess2 correctly identifies it."
+tracking_id = "https://github.com/aws/aws-cli/issues/5743"

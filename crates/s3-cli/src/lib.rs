@@ -54,7 +54,13 @@ pub async fn handle_s3_cmd(command: S3Command, ctx: &AppContext) -> i32 {
                 "command returned error"
             );
             if !e.message.is_empty() {
-                let _ = termerrln!(ctx.term, "{}", e.message);
+                // Python CLI emits a leading newline before service errors.
+                let prefix = if e.kind == error::CommandErrorKind::Client {
+                    "\n"
+                } else {
+                    ""
+                };
+                let _ = termerrln!(ctx.term, "{prefix}{}", e.message);
             }
             e.exit_code()
         }

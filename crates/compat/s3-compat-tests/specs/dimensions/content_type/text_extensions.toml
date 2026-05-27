@@ -1,0 +1,21 @@
+[test]
+name = "text_extensions"
+description = "cp infers text/html content type from .html extension"
+tags = ["cp", "upload", "content-type"]
+
+[[setup.buckets]]
+name = "{bucket}"
+
+[[setup.files]]
+path = "page.html"
+content = "<html><body>hello</body></html>"
+
+[command]
+args = ["s3", "cp", "./page.html", "s3://{bucket}/page.html"]
+
+[expected]
+exit_code = 0
+
+[[expected.objects]]
+key = "page.html"
+content_type = "text/html"

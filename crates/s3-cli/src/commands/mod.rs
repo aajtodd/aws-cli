@@ -27,6 +27,6 @@ pub async fn dispatch(
         S3Command::Presign(args) => presign::run(args, ctx).await,
         S3Command::Website(args) => website::run(args, ctx).await,
         S3Command::Mv(args) => mv::run(args, ctx).await,
-        S3Command::Sync(_) => Err(CommandError::failure("command not yet implemented")),
+        S3Command::Sync(_) => Err(CommandError::not_implemented("sync")),
     }
 }

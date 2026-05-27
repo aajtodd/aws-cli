@@ -1,0 +1,25 @@
+[test]
+name = "yaml_config"
+description = "cp uploads .yaml file — Python does not infer content_type on macOS"
+tags = ["cp", "upload", "content-type"]
+
+[[setup.buckets]]
+name = "{bucket}"
+
+[[setup.files]]
+path = "config.yaml"
+content = "key: value"
+
+[command]
+args = ["s3", "cp", "./config.yaml", "s3://{bucket}/config.yaml"]
+
+[expected]
+exit_code = 0
+
+[[expected.objects]]
+key = "config.yaml"
+exists = true
+
+[deviation]
+behavior = "improved_mime_coverage"
+rationale = "Python's mimetypes.guess_type() returns None for .yaml on macOS (no system MIME entry). Our CLI sets text/x-yaml via mime_guess2's compiled-in database — deterministic across platforms."
