@@ -188,18 +188,36 @@ pub fn normalize_output(output: &str, reverse_map: &PlaceholderMap) -> String {
     result
 }
 
-/// Generate a deterministic bucket name from a spec name, placeholder, and run ID.
+/// Generate a deterministic bucket name from a spec ID, placeholder, and run ID.
 ///
-/// Bucket names must be lowercase, alphanumeric + hyphens only.
+/// Bucket names must be 3-63 characters, lowercase, alphanumeric + hyphens only.
 /// For mock, `run_id` is "mock" (deterministic). For prod, it's a unique
 /// hex string per run to avoid collisions and enable stale cleanup.
-pub fn generate_bucket_name(spec_name: &str, placeholder: &str, run_id: &str) -> String {
+///
+/// If the name would exceed 63 chars, we truncate the spec portion and append
+/// a short hash to maintain uniqueness.
+pub fn generate_bucket_name(spec_id: &str, placeholder: &str, run_id: &str) -> String {
     let clean_placeholder = placeholder.trim_matches('{').trim_matches('}');
-    let clean_spec = spec_name
+    let clean_spec = spec_id
         .replace("::", "-")
         .replace(['/', '_'], "-")
         .to_lowercase();
-    format!("s3-compat-{run_id}-{clean_placeholder}-{clean_spec}")
+
+    let name = format!("s3-compat-{run_id}-{clean_placeholder}-{clean_spec}");
+    if name.len() <= 63 {
+        return name;
+    }
+
+    // Truncate spec portion and add 8-char hash suffix for uniqueness
+    use std::hash::{Hash, Hasher};
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    clean_spec.hash(&mut hasher);
+    let hash = format!("{:08x}", hasher.finish() as u32);
+
+    let prefix = format!("s3-compat-{run_id}-{clean_placeholder}-");
+    let max_spec_len = 63 - prefix.len() - 9; // 9 = "-" + 8 hash chars
+    let truncated = &clean_spec[..max_spec_len];
+    format!("{prefix}{truncated}-{hash}")
 }
 
 /// Current platform as a static string.
@@ -1353,7 +1371,7 @@ exit_code = 0
 "#,
         )
         .unwrap();
-        let env = harness.lease(&spec).await.unwrap();
+        let env = harness.lease(&spec, &spec.test.name).await.unwrap();
         let config_path = env.working_dir.join("config");
         let config_env = HashMap::from([("CFG_KEY".into(), "cfg_val".into())]);
         let spec_env = HashMap::from([
@@ -1406,7 +1424,7 @@ exit_code = 0
 "#,
         )
         .unwrap();
-        let env = harness.lease(&spec).await.unwrap();
+        let env = harness.lease(&spec, &spec.test.name).await.unwrap();
         let config_path = env.working_dir.join("config");
 
         let cli_env = build_env(

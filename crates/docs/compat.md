@@ -44,9 +44,12 @@ Leading `\n` on stderr matches Python. Implemented in `error.rs` +
 
 ## Dryrun
 
-**Open.** Python prints `(dryrun) {type}: {src} to {dest}` without
-making API calls. We bail with exit 252. Straightforward to implement —
-print the line, skip the transfer.
+**Resolved (single-file + recursive Local→S3).** Output format matches:
+`(dryrun) {type}: {src} to {dest}`. Recursive uses TM walker APIs.
+
+**Needs investigation:** Python's S3→S3 single-file dryrun appears to
+call HeadObject before printing (fails on missing creds). Our impl
+prints unconditionally without API calls, needs a spec to pin down.
 
 ## Recursive Paths
 
@@ -110,6 +113,13 @@ assume-role, container, IMDS v2, web-identity, caching — all match.
 - `AWS_SECURITY_TOKEN` (legacy): Not honored
 - `AWS_CREDENTIAL_EXPIRATION`: Not honored
 - STS assume-role disk cache: In-memory only
+
+**Needs specs:** Error behavior when credentials are absent or invalid —
+Python emits `Unable to locate credentials` (or `InvalidAccessKeyId`,
+`ExpiredToken`, etc.) at specific points in the command lifecycle. The
+exact message, exit code, and *when* the error surfaces (e.g., Python's
+S3→S3 dryrun calls HeadObject and fails on missing creds; our dryrun
+prints without API calls) are all observable differences worth testing.
 
 ## User Agent
 

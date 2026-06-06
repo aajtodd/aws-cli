@@ -1,0 +1,45 @@
+[test]
+name = "upload_recursive_dryrun"
+description = "mv --recursive --dryrun walks local dir, prints move lines, source files remain"
+tags = ["mv", "upload", "dryrun", "recursive"]
+
+[[setup.buckets]]
+name = "{bucket}"
+
+[[setup.files]]
+path = "src/a.txt"
+content = "aaa"
+
+[[setup.files]]
+path = "src/sub/b.txt"
+content = "bbb"
+
+[command]
+args = ["s3", "mv", "src/", "s3://{bucket}/dst/", "--recursive", "--dryrun"]
+
+[expected]
+exit_code = 0
+
+[expected.stdout]
+mode = "exact"
+value = "(dryrun) move: src/a.txt to s3://{bucket}/dst/a.txt\n(dryrun) move: src/sub/b.txt to s3://{bucket}/dst/sub/b.txt\n"
+
+[expected.stderr]
+mode = "exact"
+value = ""
+
+[[expected.objects]]
+key = "dst/a.txt"
+exists = false
+
+[[expected.objects]]
+key = "dst/sub/b.txt"
+exists = false
+
+[[expected.files]]
+path = "src/a.txt"
+exists = true
+
+[[expected.files]]
+path = "src/sub/b.txt"
+exists = true

@@ -1,0 +1,29 @@
+[test]
+name = "download_single_dryrun"
+description = "cp --dryrun S3→Local prints dryrun line and does not download"
+tags = ["cp", "download", "dryrun"]
+
+[[setup.buckets]]
+name = "{bucket}"
+
+[[setup.objects]]
+key = "hello.txt"
+content = "hello world"
+
+[command]
+args = ["s3", "cp", "s3://{bucket}/hello.txt", "hello.txt", "--dryrun"]
+
+[expected]
+exit_code = 0
+
+[expected.stdout]
+mode = "exact"
+value = "(dryrun) download: s3://{bucket}/hello.txt to ./hello.txt\n"
+
+[expected.stderr]
+mode = "exact"
+value = ""
+
+[[expected.files]]
+path = "hello.txt"
+exists = false

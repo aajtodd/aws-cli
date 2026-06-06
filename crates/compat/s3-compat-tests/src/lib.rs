@@ -45,9 +45,8 @@ async fn harness() -> &'static TestHarness {
                     })
             } else {
                 // Bare name — search PATH
-                which::which(&cli_binary_raw).unwrap_or_else(|_| {
-                    panic!("CLI binary not found on PATH: {cli_binary_raw}")
-                })
+                which::which(&cli_binary_raw)
+                    .unwrap_or_else(|_| panic!("CLI binary not found on PATH: {cli_binary_raw}"))
             };
 
             let is_mock = std::env::var("COMPAT_TARGET").as_deref() != Ok("prod");
@@ -67,6 +66,26 @@ async fn harness() -> &'static TestHarness {
             .expect("failed to init test harness")
         })
         .await
+}
+
+/// Derive a unique spec ID from the file path.
+///
+/// Extracts the relative path under `specs/` (e.g., "commands/cp/upload_single_dryrun")
+/// which is guaranteed unique across the corpus, unlike `test.name` which can collide
+/// across commands (e.g., both cp and mv have "upload_single_dryrun").
+fn spec_id_from_path(spec_path: &str) -> String {
+    // Find "specs/" marker and take everything after it, minus extension
+    if let Some(idx) = spec_path.find("specs/") {
+        let rel = &spec_path[idx + "specs/".len()..];
+        rel.strip_suffix(".toml").unwrap_or(rel).to_string()
+    } else {
+        // Fallback: use the file stem
+        std::path::Path::new(spec_path)
+            .file_stem()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .into_owned()
+    }
 }
 
 /// Run a single spec file through the full lifecycle.
@@ -96,7 +115,7 @@ pub async fn run_spec_file(spec_path: &str) {
     }
 
     let env = harness
-        .lease(&spec)
+        .lease(&spec, &spec_id_from_path(spec_path))
         .await
         .unwrap_or_else(|e| panic!("failed to lease env for {spec_path}: {e}"));
 

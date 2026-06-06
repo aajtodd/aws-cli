@@ -290,6 +290,9 @@ pub struct TransferArgs {
 
     #[arg(long)]
     pub no_overwrite: bool,
+
+    #[arg(long)]
+    pub page_size: Option<i32>,
 }
 
 /// Include/exclude filter arguments.

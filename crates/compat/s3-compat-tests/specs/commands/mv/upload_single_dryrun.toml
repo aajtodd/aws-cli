@@ -1,0 +1,34 @@
+[test]
+name = "upload_single_dryrun"
+description = "mv --dryrun Local→S3 prints move line and does not upload or delete"
+tags = ["mv", "upload", "dryrun"]
+
+[[setup.buckets]]
+name = "{bucket}"
+
+[[setup.files]]
+path = "hello.txt"
+content = "hello world"
+
+[command]
+args = ["s3", "mv", "hello.txt", "s3://{bucket}/hello.txt", "--dryrun"]
+
+[expected]
+exit_code = 0
+
+[expected.stdout]
+mode = "exact"
+value = "(dryrun) move: ./hello.txt to s3://{bucket}/hello.txt\n"
+
+[expected.stderr]
+mode = "exact"
+value = ""
+
+[[expected.objects]]
+key = "hello.txt"
+exists = false
+
+[[expected.files]]
+path = "hello.txt"
+exists = true
+content = "hello world"

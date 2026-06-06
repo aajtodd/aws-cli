@@ -142,7 +142,7 @@ impl TestHarness {
     /// Blocks if all backends are in use. The backend is reset before use.
     /// When the returned `TestEnv` is dropped, the backend is automatically
     /// returned to the harness.
-    pub async fn lease(&self, spec: &TestSpec) -> Result<TestEnv, Error> {
+    pub async fn lease(&self, spec: &TestSpec, spec_id: &str) -> Result<TestEnv, Error> {
         let backend = loop {
             let notified = self.inner.notify.notified();
             if let Some(b) = self.inner.dirty.lock().unwrap().pop_front() {
@@ -153,19 +153,21 @@ impl TestHarness {
 
         backend.reset().await?;
 
-        // Collect all bucket placeholders from the spec
+        // Collect all bucket placeholders from the spec.
+        // Use spec_id (derived from file path) for unique bucket names across
+        // specs that share the same test.name but live under different commands.
         let mut placeholders = PlaceholderMap::new();
         for name in collect_bucket_placeholders(spec) {
             placeholders.insert(
                 name.clone(),
-                generate_bucket_name(&spec.test.name, &name, &self.run_id),
+                generate_bucket_name(spec_id, &name, &self.run_id),
             );
         }
         // Always ensure {bucket} exists as a default
         if !placeholders.contains_key("{bucket}") {
             placeholders.insert(
                 "{bucket}".into(),
-                generate_bucket_name(&spec.test.name, "{bucket}", &self.run_id),
+                generate_bucket_name(spec_id, "{bucket}", &self.run_id),
             );
         }
 
@@ -287,7 +289,7 @@ exit_code = 0
         .unwrap();
 
         let spec = test_spec("basic_ls");
-        let env = harness.lease(&spec).await.unwrap();
+        let env = harness.lease(&spec, &spec.test.name).await.unwrap();
         assert!(env.placeholders.contains_key("{bucket}"));
         assert!(env.working_dir.exists());
         assert_eq!(env.cli_binary, PathBuf::from("/usr/bin/echo"));
@@ -308,8 +310,8 @@ exit_code = 0
 
         let spec_a = test_spec("spec_a");
         let spec_b = test_spec("spec_b");
-        let env1 = harness.lease(&spec_a).await.unwrap();
-        let env2 = harness.lease(&spec_b).await.unwrap();
+        let env1 = harness.lease(&spec_a, &spec_a.test.name).await.unwrap();
+        let env2 = harness.lease(&spec_b, &spec_b.test.name).await.unwrap();
 
         assert_ne!(
             env1.placeholders.get("{bucket}"),
@@ -332,7 +334,7 @@ exit_code = 0
         .unwrap();
 
         let spec = test_spec("reset_test");
-        let env = harness.lease(&spec).await.unwrap();
+        let env = harness.lease(&spec, &spec.test.name).await.unwrap();
         env.backend().create_bucket("test-bucket").await.unwrap();
         env.backend()
             .put_object("test-bucket", "key.txt", b"data".to_vec(), None, None, None)
@@ -341,7 +343,7 @@ exit_code = 0
         drop(env);
 
         let spec2 = test_spec("after_reset");
-        let env2 = harness.lease(&spec2).await.unwrap();
+        let env2 = harness.lease(&spec2, &spec2.test.name).await.unwrap();
         env2.backend().create_bucket("test-bucket").await.unwrap();
         let objects = env2
             .backend()
@@ -385,7 +387,7 @@ exit_code = 0
         )
         .unwrap();
 
-        let env = harness.lease(&spec).await.unwrap();
+        let env = harness.lease(&spec, &spec.test.name).await.unwrap();
         assert!(env.placeholders.contains_key("{source}"));
         assert!(env.placeholders.contains_key("{dest}"));
         assert!(env.placeholders.contains_key("{bucket}"));

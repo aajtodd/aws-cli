@@ -18,6 +18,7 @@ pub mod redirect;
 pub mod term;
 pub mod transfer;
 pub mod uri;
+pub mod walk;
 
 pub use cli::S3Command;
 pub use context::AppContext;
