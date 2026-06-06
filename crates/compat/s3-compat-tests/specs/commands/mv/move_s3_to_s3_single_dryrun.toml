@@ -1,0 +1,38 @@
+[test]
+name = "move_s3_to_s3_single_dryrun"
+description = "mv --dryrun S3→S3 prints dryrun line, does not move, object still exists"
+tags = ["mv", "move", "dryrun", "s3-to-s3"]
+
+[[setup.buckets]]
+name = "{bucket}"
+
+[[setup.buckets]]
+name = "{bucket-dest}"
+
+[[setup.objects]]
+key = "hello.txt"
+content = "hello world"
+
+[command]
+args = ["s3", "mv", "s3://{bucket}/hello.txt", "s3://{bucket-dest}/hello.txt", "--dryrun"]
+
+[expected]
+exit_code = 0
+
+[expected.stdout]
+mode = "exact"
+value = "(dryrun) move: s3://{bucket}/hello.txt to s3://{bucket-dest}/hello.txt\n"
+
+[expected.stderr]
+mode = "exact"
+value = ""
+
+[[expected.objects]]
+key = "hello.txt"
+exists = true
+content = "hello world"
+
+[[expected.objects]]
+bucket = "{bucket-dest}"
+key = "hello.txt"
+exists = false

@@ -1,0 +1,33 @@
+[test]
+name = "s3_to_s3_single_dryrun"
+description = "cp --dryrun S3→S3 prints dryrun line and does not copy"
+tags = ["cp", "copy", "dryrun", "s3-to-s3"]
+
+[[setup.buckets]]
+name = "{bucket}"
+
+[[setup.buckets]]
+name = "{bucket-dest}"
+
+[[setup.objects]]
+key = "hello.txt"
+content = "hello world"
+
+[command]
+args = ["s3", "cp", "s3://{bucket}/hello.txt", "s3://{bucket-dest}/hello.txt", "--dryrun"]
+
+[expected]
+exit_code = 0
+
+[expected.stdout]
+mode = "exact"
+value = "(dryrun) copy: s3://{bucket}/hello.txt to s3://{bucket-dest}/hello.txt\n"
+
+[expected.stderr]
+mode = "exact"
+value = ""
+
+[[expected.objects]]
+bucket = "{bucket-dest}"
+key = "hello.txt"
+exists = false

@@ -1,0 +1,52 @@
+[test]
+name = "move_s3_to_s3_recursive_dryrun"
+description = "mv --recursive --dryrun S3→S3 lists source objects, does not move, objects still exist"
+tags = ["mv", "move", "dryrun", "recursive", "s3-to-s3"]
+
+[[setup.buckets]]
+name = "{bucket}"
+
+[[setup.buckets]]
+name = "{bucket-dest}"
+
+[[setup.objects]]
+key = "src/a.txt"
+content = "aaa"
+
+[[setup.objects]]
+key = "src/sub/b.txt"
+content = "bbb"
+
+[command]
+args = ["s3", "mv", "s3://{bucket}/src/", "s3://{bucket-dest}/dst/", "--recursive", "--dryrun"]
+
+[expected]
+exit_code = 0
+
+[expected.stdout]
+mode = "exact"
+value = "(dryrun) move: s3://{bucket}/src/a.txt to s3://{bucket-dest}/dst/a.txt\n(dryrun) move: s3://{bucket}/src/sub/b.txt to s3://{bucket-dest}/dst/sub/b.txt\n"
+
+[expected.stderr]
+mode = "exact"
+value = ""
+
+[[expected.objects]]
+key = "src/a.txt"
+exists = true
+content = "aaa"
+
+[[expected.objects]]
+key = "src/sub/b.txt"
+exists = true
+content = "bbb"
+
+[[expected.objects]]
+bucket = "{bucket-dest}"
+key = "dst/a.txt"
+exists = false
+
+[[expected.objects]]
+bucket = "{bucket-dest}"
+key = "dst/sub/b.txt"
+exists = false

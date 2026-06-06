@@ -1,0 +1,37 @@
+[test]
+name = "download_recursive_dryrun"
+description = "cp --recursive --dryrun S3→Local prints each file and does not download"
+tags = ["cp", "download", "dryrun", "recursive"]
+
+[[setup.buckets]]
+name = "{bucket}"
+
+[[setup.objects]]
+key = "src/a.txt"
+content = "aaa"
+
+[[setup.objects]]
+key = "src/sub/b.txt"
+content = "bbb"
+
+[command]
+args = ["s3", "cp", "s3://{bucket}/src/", "dst/", "--recursive", "--dryrun"]
+
+[expected]
+exit_code = 0
+
+[expected.stdout]
+mode = "exact"
+value = "(dryrun) download: s3://{bucket}/src/a.txt to dst/a.txt\n(dryrun) download: s3://{bucket}/src/sub/b.txt to dst/sub/b.txt\n"
+
+[expected.stderr]
+mode = "exact"
+value = ""
+
+[[expected.files]]
+path = "dst/a.txt"
+exists = false
+
+[[expected.files]]
+path = "dst/sub/b.txt"
+exists = false

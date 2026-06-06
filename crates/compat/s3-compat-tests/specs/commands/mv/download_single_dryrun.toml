@@ -1,0 +1,34 @@
+[test]
+name = "download_single_dryrun"
+description = "mv --dryrun S3→Local prints dryrun line, does not download, object still exists"
+tags = ["mv", "download", "dryrun"]
+
+[[setup.buckets]]
+name = "{bucket}"
+
+[[setup.objects]]
+key = "hello.txt"
+content = "hello world"
+
+[command]
+args = ["s3", "mv", "s3://{bucket}/hello.txt", "hello.txt", "--dryrun"]
+
+[expected]
+exit_code = 0
+
+[expected.stdout]
+mode = "exact"
+value = "(dryrun) move: s3://{bucket}/hello.txt to ./hello.txt\n"
+
+[expected.stderr]
+mode = "exact"
+value = ""
+
+[[expected.files]]
+path = "hello.txt"
+exists = false
+
+[[expected.objects]]
+key = "hello.txt"
+exists = true
+content = "hello world"
