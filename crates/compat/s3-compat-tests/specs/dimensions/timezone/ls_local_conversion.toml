@@ -1,0 +1,29 @@
+[test]
+name = "ls_local_conversion"
+description = "s3 ls converts LastModified to the local timezone (TZ pinned for determinism). mock_only: asserting a converted timestamp requires a controlled LastModified, which prod does not allow."
+tags = ["ls", "timezone", "output-format"]
+platform = ["linux", "macos"]
+target = "mock_only"
+
+[[setup.objects]]
+key = "file1.txt"
+content = "hello"
+last_modified = "2024-06-15T14:30:00Z"
+
+[command]
+args = ["s3", "ls", "s3://{bucket}/"]
+env = { TZ = "America/Phoenix" }
+
+[expected]
+exit_code = 0
+
+# 14:30:00Z in America/Phoenix (UTC-7, no DST) is 07:30:00 local.
+# UTC display would (wrongly) show 14:30:00 — this pins the conversion.
+[expected.stdout]
+mode = "exact"
+value = "2024-06-15 07:30:00          5 file1.txt\n"
+
+[source]
+refs = ["aws/aws-cli#2784", "aws/aws-cli#3097"]
+cli_ref = "awscli/customizations/s3/subcommands.py:919"
+rationale = "_make_last_mod_str converts LastModified to local tz (tzlocal()), not UTC; #3097 shows the docs once wrongly claimed UTC."

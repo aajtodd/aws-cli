@@ -95,7 +95,14 @@ rationale = "#523: per-file failure line dropped the '{src} to {dest}' segment" 
   repo-qualified (`org/repo#NUM` or a full URL); a bare number is
   ambiguous because behavior is drawn from several repos (`aws/aws-cli`,
   `boto/s3transfer`, `boto/botocore`, …). Issue vs PR is not distinguished
-  — GitHub resolves either form.
+  — GitHub resolves either form. **Curate by topic, not by conclusion:**
+  cite issues/PRs genuinely about THIS behavior — do NOT bulk-copy a
+  dimension's inventory evidence (e.g. a sync-comparison issue does not
+  belong on an `ls`-display spec). A ref that reaches the *wrong* conclusion
+  is still good provenance if it documents the confusion the spec resolves
+  (e.g. a PR claiming UTC on a spec that proves local). `refs` trace *why*
+  the behavior was contested; `cli_ref` proves *what* the code does — keep
+  both when available.
 - **`cli_ref`** — the baseline source location as `path:line`, valid at the
   pinned v2 commit recorded in `crates/docs/compat.md` (so line numbers
   don't drift). Optional.
