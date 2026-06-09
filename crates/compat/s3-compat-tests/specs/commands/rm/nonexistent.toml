@@ -19,3 +19,6 @@ value = "delete: s3://{bucket}/does-not-exist.txt\n"
 [[expected.objects]]
 key = "does-not-exist.txt"
 exists = false
+
+[source]
+refs = ["aws/aws-cli#6926"]

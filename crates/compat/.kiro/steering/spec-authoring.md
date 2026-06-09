@@ -77,6 +77,42 @@ content = "hello world"
 size = 11
 ```
 
+## Provenance: the `[source]` Block
+
+Every spec should record where its locked behavior came from and why, so
+the spec file alone is auditable — no external tracker. Add a `[source]`
+block:
+
+```toml
+[source]
+refs = ["aws/aws-cli#523", "boto/s3transfer#87"]   # repo-qualified: org/repo#NUM or full URL
+cli_ref = "awscli/customizations/s3/results.py:180" # path:line in the pinned v2 baseline
+python_test = "tests/unit/customizations/s3/test_results.py::ResultPrinterTest"  # optional
+rationale = "#523: per-file failure line dropped the '{src} to {dest}' segment"  # optional, terse, factual
+```
+
+- **`refs`** — upstream issues/PRs that motivated the spec. Always
+  repo-qualified (`org/repo#NUM` or a full URL); a bare number is
+  ambiguous because behavior is drawn from several repos (`aws/aws-cli`,
+  `boto/s3transfer`, `boto/botocore`, …). Issue vs PR is not distinguished
+  — GitHub resolves either form.
+- **`cli_ref`** — the baseline source location as `path:line`, valid at the
+  pinned v2 commit recorded in `crates/docs/compat.md` (so line numbers
+  don't drift). Optional.
+- **`python_test`** — the upstream Python CLI test that encodes the same
+  behavior, if one exists. Optional.
+- **`rationale`** — optional, terse. `refs`/`cli_ref`/`python_test`
+  usually *are* the rationale; only add prose when it captures non-obvious
+  context the links don't. State it as a fact. **Do not editorialize about
+  the spec's purpose** — "locks the behavior", "so it can't regress",
+  "prevents a regression" describe the entire compat suite and add nothing.
+  Agents must follow this too. If the refs speak for themselves, omit it.
+
+The whole block is optional, but specs derived from the behavioral corpus
+should carry it. There is no separate status ledger or coverage tool —
+the spec suite is the record, and `[source]` is how each spec stays
+self-explanatory.
+
 ## Assertion Mode Decision Tree
 
 | Situation | Use |

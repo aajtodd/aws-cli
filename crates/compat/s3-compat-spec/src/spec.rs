@@ -10,6 +10,7 @@ pub struct TestSpec {
     pub expected: Expected,
     pub server: Option<ServerConfig>,
     pub deviation: Option<Deviation>,
+    pub source: Option<Source>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -296,6 +297,32 @@ pub struct DeviationExpected {
     pub stderr: Option<OutputAssertion>,
 }
 
+/// Provenance for a spec — where the locked behavior comes from and why.
+///
+/// Specs are self-auditing: each carries the upstream evidence that
+/// motivated it, so the spec file alone answers "where did this come from
+/// and why does it exist." Optional; present on specs derived from a known
+/// issue, PR, baseline source location, or upstream test.
+#[derive(Debug, Deserialize)]
+pub struct Source {
+    /// Upstream references, repo-qualified so they are unambiguous across
+    /// the repos behavior is drawn from. Each is GitHub shorthand
+    /// (`org/repo#NUM`, e.g. `aws/aws-cli#523`) or a full URL.
+    #[serde(default)]
+    pub refs: Vec<String>,
+    /// Location in the pinned v2 AWS CLI baseline as `path:line`, valid at
+    /// the baseline commit recorded in `crates/docs/compat.md`.
+    pub cli_ref: Option<String>,
+    /// Optional pointer to the upstream Python CLI test that encodes this
+    /// behavior (e.g. `tests/unit/.../test_x.py::TestCase`).
+    pub python_test: Option<String>,
+    /// Optional terse note for non-obvious context that `refs` / `cli_ref`
+    /// / `python_test` don't already convey. State it factually — do not
+    /// editorialize about the spec's purpose ("locks behavior", "prevents
+    /// regression" is the point of every spec and adds nothing).
+    pub rationale: Option<String>,
+}
+
 fn default_bucket() -> String {
     "{bucket}".into()
 }
@@ -316,6 +343,78 @@ pub fn parse_spec(toml_str: &str) -> Result<TestSpec, toml::de::Error> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_parse_source_provenance() {
+        let toml = r#"
+[test]
+name = "rm_nonexistent"
+description = "rm on a nonexistent object exits 0"
+tags = ["rm"]
+
+[command]
+args = ["s3", "rm", "s3://{bucket}/missing.txt"]
+
+[expected]
+exit_code = 0
+
+[source]
+refs = ["aws/aws-cli#6926", "https://github.com/boto/s3transfer/pull/87"]
+cli_ref = "awscli/customizations/s3/results.py:180"
+python_test = "tests/unit/customizations/s3/test_results.py::ResultPrinterTest"
+rationale = "Idempotent delete must still print the delete: line and exit 0."
+"#;
+        let spec = parse_spec(toml).unwrap();
+        let source = spec.source.as_ref().unwrap();
+        assert_eq!(
+            source.refs,
+            ["aws/aws-cli#6926", "https://github.com/boto/s3transfer/pull/87"]
+        );
+        assert_eq!(
+            source.cli_ref.as_deref(),
+            Some("awscli/customizations/s3/results.py:180")
+        );
+        assert!(source.rationale.as_deref().unwrap().contains("delete: line"));
+    }
+
+    #[test]
+    fn test_source_refs_only_no_rationale() {
+        let toml = r#"
+[test]
+name = "refs_only"
+description = "refs carry the provenance; rationale omitted"
+
+[command]
+args = ["s3", "rm", "s3://{bucket}/missing.txt"]
+
+[expected]
+exit_code = 0
+
+[source]
+refs = ["aws/aws-cli#6926"]
+"#;
+        let spec = parse_spec(toml).unwrap();
+        let source = spec.source.as_ref().unwrap();
+        assert_eq!(source.refs, ["aws/aws-cli#6926"]);
+        assert!(source.rationale.is_none());
+    }
+
+    #[test]
+    fn test_source_is_optional() {
+        let toml = r#"
+[test]
+name = "no_source"
+description = "spec without provenance still parses"
+
+[command]
+args = ["s3", "ls"]
+
+[expected]
+exit_code = 0
+"#;
+        let spec = parse_spec(toml).unwrap();
+        assert!(spec.source.is_none());
+    }
 
     #[test]
     fn test_parse_ls_spec() {
