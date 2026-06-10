@@ -1,0 +1,38 @@
+[test]
+name = "download_recursive"
+description = "cp --recursive downloads an S3 prefix to a local directory: per-file output, progress, local file state, and exit code"
+tags = ["cp", "download", "recursive"]
+
+[[setup.buckets]]
+name = "{bucket}"
+
+[[setup.objects]]
+key = "a.txt"
+content = "aaa"
+
+[[setup.objects]]
+key = "sub/c.txt"
+content = "ccc"
+
+[command]
+args = ["s3", "cp", "s3://{bucket}/", "out", "--recursive"]
+
+[expected]
+exit_code = 0
+
+# One pattern per file (order non-deterministic) plus a progress line.
+[expected.stdout]
+mode = "regex"
+value = [
+    "^Completed [0-9]+ Bytes/6 Bytes \\([^)]+\\) with [0-9]+ file\\(s\\) remaining$",
+    "^download: s3://\\{bucket\\}/a\\.txt to out/a\\.txt$",
+    "^download: s3://\\{bucket\\}/sub/c\\.txt to out/sub/c\\.txt$",
+]
+
+[[expected.files]]
+path = "out/a.txt"
+content = "aaa"
+
+[[expected.files]]
+path = "out/sub/c.txt"
+content = "ccc"

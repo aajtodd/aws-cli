@@ -104,3 +104,112 @@ pub(crate) async fn download_single(
 
     Ok(())
 }
+
+/// Recursively upload a local directory tree to an S3 prefix.
+///
+/// Each file is stored under `key_prefix` at its path relative to `source`.
+/// Individual failures do not abort the operation; returns an error if any
+/// file failed to transfer.
+#[tracing::instrument(skip(ctx, args), fields(%bucket, %key_prefix, source = %source.display()))]
+pub(crate) async fn upload_recursive(
+    ctx: &AppContext,
+    source: &Path,
+    bucket: &str,
+    key_prefix: &str,
+    args: &crate::cli::TransferArgs,
+) -> Result<(), CommandError> {
+    use aws_sdk_s3_transfer_manager::types::FailedTransferPolicy;
+
+    let tm = build_tm(ctx);
+    let walker = crate::walk::build_fs_walker(args);
+
+    // An empty key_prefix would key objects with a leading slash, since the
+    // Transfer Manager joins `{prefix}{delimiter}{relative}`. Omit it so the
+    // key is the bare relative path.
+    let mut req = tm
+        .upload_objects()
+        .source(source)
+        .bucket(bucket)
+        .walker(walker)
+        .failure_policy(FailedTransferPolicy::Continue);
+    if !key_prefix.is_empty() {
+        req = req.key_prefix(key_prefix);
+    }
+
+    let handle = req.initiate().map_err(|e| {
+        tracing::debug!(error = %e, "failed to initiate recursive upload");
+        CommandError::failure(format!("upload failed: {e}")).with_source(e)
+    })?;
+
+    let output = handle.join().await.map_err(|e| {
+        tracing::debug!(error = %e, "recursive upload failed");
+        CommandError::failure(format!("upload failed: {e}")).with_source(e)
+    })?;
+
+    let failed = output.failed_transfers();
+    if !failed.is_empty() {
+        tracing::debug!(count = failed.len(), "recursive upload had per-object failures");
+        return Err(CommandError::failure(format!(
+            "upload failed: {} of the requested object(s) failed to transfer",
+            failed.len()
+        )));
+    }
+
+    Ok(())
+}
+
+/// Recursively download an S3 prefix to a local directory.
+///
+/// Each object under `key_prefix` is written to `dest` at its path relative
+/// to the prefix. The destination directory is created if it does not exist.
+/// Individual failures do not abort the operation; returns an error if any
+/// file failed to transfer.
+#[tracing::instrument(skip(ctx), fields(%bucket, %key_prefix, dest = %dest.display()))]
+pub(crate) async fn download_recursive(
+    ctx: &AppContext,
+    bucket: &str,
+    key_prefix: &str,
+    dest: &Path,
+) -> Result<(), CommandError> {
+    use aws_sdk_s3_transfer_manager::types::FailedTransferPolicy;
+
+    let tm = build_tm(ctx);
+
+    // download_objects requires an existing destination directory.
+    std::fs::create_dir_all(dest).map_err(|e| {
+        tracing::debug!(error = %e, dest = %dest.display(), "failed to create download destination directory");
+        CommandError::failure(format!("download failed: {e}")).with_source(e)
+    })?;
+
+    // See upload_recursive: an empty key_prefix is omitted to avoid a
+    // leading-slash key on the listing.
+    let mut req = tm
+        .download_objects()
+        .bucket(bucket)
+        .destination(dest)
+        .failure_policy(FailedTransferPolicy::Continue);
+    if !key_prefix.is_empty() {
+        req = req.key_prefix(key_prefix);
+    }
+
+    let handle = req.initiate().map_err(|e| {
+        tracing::debug!(error = %e, "failed to initiate recursive download");
+        CommandError::failure(format!("download failed: {e}")).with_source(e)
+    })?;
+
+    let output = handle.join().await.map_err(|e| {
+        tracing::debug!(error = %e, "recursive download failed");
+        CommandError::failure(format!("download failed: {e}")).with_source(e)
+    })?;
+
+    let failed = output.failed_transfers();
+    if !failed.is_empty() {
+        tracing::debug!(count = failed.len(), "recursive download had per-object failures");
+        return Err(CommandError::failure(format!(
+            "download failed: {} of the requested object(s) failed to transfer",
+            failed.len()
+        )));
+    }
+
+    Ok(())
+}

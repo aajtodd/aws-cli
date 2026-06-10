@@ -53,8 +53,22 @@ prints unconditionally without API calls, needs a spec to pin down.
 
 ## Recursive Paths
 
-**Open.** `cp --recursive`, `mv --recursive`, `sync` — all bail with
-exit 252. Blocked on TM walker APIs (`upload_objects`/`download_objects`).
+**Resolved (partial).** `cp --recursive` Local→S3 and S3→Local are
+implemented via TM `upload_objects`/`download_objects` (object keys and
+local paths match Python; exit code matches via `FailedTransferPolicy::Continue`).
+Recursive download creates the destination directory (and parents) to match
+Python.
+
+**Open:**
+- `mv --recursive` — not yet wired (reuses the same TM APIs).
+- `cp/mv --recursive` S3→S3 — blocked on `tm.copy()`.
+- `sync` — blocked on comparison logic.
+- **Per-file output / progress** during recursive transfers — not emitted
+  (no per-object TM event API); recursive transfers are silent.
+- **Content-type inference on recursive upload** — `upload_objects` has no
+  content-type hook, so recursive uploads store `application/octet-stream`
+  where Python infers per file (e.g. `.txt` → `text/plain`). See
+  Content-Type Detection; needs a TM per-file content-type capability.
 
 ## Path Display
 

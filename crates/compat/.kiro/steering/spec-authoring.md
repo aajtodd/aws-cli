@@ -9,6 +9,24 @@ You are authoring or editing a backwards-compatibility spec. Follow this
 workflow end-to-end. **Mock-only confidence is false confidence** — the
 non-negotiable workflow ends with prod validation.
 
+## Capture the Full Contract; Let Known Gaps Fail
+
+A spec encodes the *complete* observable behavior of the baseline (Python)
+CLI — every output line, exit code, and object/file property the command
+produces. Write the whole contract even when the Rust CLI does not yet
+match it.
+
+Running a spec against the Rust CLI is the gap report: a spec that passes
+against Python and fails against Rust pinpoints exactly what is missing or
+divergent. Do NOT trim or weaken assertions to make Rust pass — that hides
+the gap and defeats the suite.
+
+Use a `[deviation]` block ONLY for a difference that is accepted and
+permanent — an intentional, documented divergence we will not change (e.g.
+a deliberate MIME-string variant). A not-yet-implemented or upstream-blocked
+behavior is NOT a deviation: leave the spec asserting the baseline and let
+it fail until the behavior lands.
+
 ## The Non-Negotiable Workflow
 
 For every new spec, in this order:

@@ -31,12 +31,18 @@ pub async fn run(args: CpArgs, ctx: &AppContext) -> std::result::Result<(), Comm
         return dryrun(&args, ctx).await;
     }
 
-    if args.recursive {
-        return Err(CommandError::not_implemented("cp --recursive"));
-    }
-
     match (&args.source, &args.dest) {
         (TransferUri::Local(src), TransferUri::S3(dest)) => {
+            if args.recursive {
+                return transfer::upload_recursive(
+                    ctx,
+                    src,
+                    &dest.bucket,
+                    &dest.key,
+                    &args.transfer,
+                )
+                .await;
+            }
             let src_display = format_local_path(src);
             let dst_display = format!("s3://{}/{}", dest.bucket, dest.key);
             let ct = resolve_content_type(
@@ -49,6 +55,9 @@ pub async fn run(args: CpArgs, ctx: &AppContext) -> std::result::Result<(), Comm
             Ok(())
         }
         (TransferUri::S3(src), TransferUri::Local(dest)) => {
+            if args.recursive {
+                return transfer::download_recursive(ctx, &src.bucket, &src.key, dest).await;
+            }
             let src_display = format!("s3://{}/{}", src.bucket, src.key);
             let dst_display = format_local_path(dest);
             transfer::download_single(ctx, &src.bucket, &src.key, dest).await?;
