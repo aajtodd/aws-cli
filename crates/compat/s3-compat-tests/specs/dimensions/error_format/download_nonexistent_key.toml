@@ -1,0 +1,26 @@
+[test]
+name = "download_nonexistent_key"
+description = "cp download of a nonexistent S3 key fails with the 'fatal error:' single-operation format (ERROR_FORMAT) and exit 1"
+tags = ["cp", "download", "error-handling", "error_format"]
+target = "mock_only"
+
+[[setup.buckets]]
+name = "{bucket}"
+
+[command]
+args = ["s3", "cp", "s3://{bucket}/missing.txt", "out.txt"]
+
+[expected]
+exit_code = 1
+
+[expected.stdout]
+mode = "exact"
+value = ""
+
+[expected.stderr]
+mode = "exact"
+value = "fatal error: An error occurred (404) when calling the HeadObject operation: Key \"missing.txt\" does not exist\n"
+
+[source]
+cli_ref = "awscli/customizations/s3/results.py:339"
+rationale = "Single-operation failures use ERROR_FORMAT = 'fatal error: {exception}', distinct from the recursive/sync FAILURE_FORMAT."

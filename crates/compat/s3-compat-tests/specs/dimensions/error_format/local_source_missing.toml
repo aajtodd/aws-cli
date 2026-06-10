@@ -1,0 +1,25 @@
+[test]
+name = "local_source_missing"
+description = "cp with a nonexistent local source fails up front with the user-provided-path message and exit 255, before any S3 call"
+tags = ["cp", "upload", "error-handling", "error_format"]
+
+[[setup.buckets]]
+name = "{bucket}"
+
+[command]
+args = ["s3", "cp", "nope.txt", "s3://{bucket}/k"]
+
+[expected]
+exit_code = 255
+
+[expected.stdout]
+mode = "exact"
+value = ""
+
+[expected.stderr]
+mode = "exact"
+value = "\nThe user-provided path nope.txt does not exist.\n"
+
+[source]
+cli_ref = "awscli/customizations/s3/subcommands.py:1829"
+rationale = "Local upload source is validated before the transfer; a missing path raises ERROR_FORMAT-independent message and exits 255."
