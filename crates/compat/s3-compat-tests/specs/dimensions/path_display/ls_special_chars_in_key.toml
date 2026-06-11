@@ -1,0 +1,57 @@
+[test]
+name = "ls_special_chars_in_key"
+description = "s3 ls displays object keys verbatim — space, '=', '+', '%', '&', and non-ASCII are shown raw, never percent-encoded. v2 decodes the ListObjectsV2 EncodingType=url round-trip; #1805 (v1 percent-encoded output) is fixed."
+tags = ["ls", "path_display", "output-format"]
+
+[[setup.buckets]]
+name = "{bucket}"
+
+[[setup.objects]]
+key = "a b.txt"
+content = "x"
+last_modified = "2024-01-01T00:00:00Z"
+
+[[setup.objects]]
+key = "a&b.txt"
+content = "x"
+last_modified = "2024-01-01T00:00:00Z"
+
+[[setup.objects]]
+key = "a+b.txt"
+content = "x"
+last_modified = "2024-01-01T00:00:00Z"
+
+[[setup.objects]]
+key = "a=b.txt"
+content = "x"
+last_modified = "2024-01-01T00:00:00Z"
+
+[[setup.objects]]
+key = "café.txt"
+content = "x"
+last_modified = "2024-01-01T00:00:00Z"
+
+[[setup.objects]]
+key = "p%ct.txt"
+content = "x"
+last_modified = "2024-01-01T00:00:00Z"
+
+[command]
+args = ["s3", "ls", "s3://{bucket}/"]
+
+[expected]
+exit_code = 0
+
+[expected.stderr]
+mode = "exact"
+value = ""
+
+# Keys shown raw, sorted lexicographically. TZ=UTC is pinned by the runner,
+# so the pinned LastModified renders as 2024-01-01 00:00:00. Multi-line ls
+# output → golden per the spec-authoring criterion.
+[expected.stdout]
+mode = "golden"
+
+[source]
+refs = ["aws/aws-cli#1805", "aws/aws-cli#2930"]
+rationale = "#1805 (v1) reported percent-encoded keys in output; v2 decodes the EncodingType=url round-trip and displays keys raw. #2930 covers spaces and field alignment."

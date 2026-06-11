@@ -319,7 +319,10 @@ pub struct Source {
     /// Optional terse note for non-obvious context that `refs` / `cli_ref`
     /// / `python_test` don't already convey. State it factually — do not
     /// editorialize about the spec's purpose ("locks behavior", "prevents
-    /// regression" is the point of every spec and adds nothing).
+    /// regression" is the point of every spec and adds nothing). Carry NO
+    /// point-in-time or test state — no "verified", no "Rust matches" /
+    /// "diverges", no pass/fail snapshot. Describe the baseline behavior and
+    /// its provenance; running the suite reports conformance.
     pub rationale: Option<String>,
 }
 

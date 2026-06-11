@@ -27,6 +27,48 @@ a deliberate MIME-string variant). A not-yet-implemented or upstream-blocked
 behavior is NOT a deviation: leave the spec asserting the baseline and let
 it fail until the behavior lands.
 
+A verified behavior becomes a spec. If you run the CLI to confirm how
+something behaves, the artifact is a committed spec that locks it — never a
+throwaway probe you check once and discard. The spec suite is the record;
+a manual point-in-time check that isn't captured is lost. And cover the
+behavior *space*, not one input: a spec should exercise the representative
+cases that can change the outcome (e.g. each class of special character, not
+just one), so the suite answers the behavior exhaustively rather than
+anecdotally.
+
+## Where a spec lives: dimension vs command
+
+Every spec runs *some* command, so "it uses ls" never decides placement. Ask:
+**if this behavior were wrong, would it be wrong in more than one command?**
+
+- Yes → it is a cross-cutting aspect: `dimensions/<dim>/`, named by the aspect
+  (timezone, error_format, exit_codes, path_display, content_type, …), tagged
+  with the command that exercises it.
+- No — it is specific to one command's own function (mb creating a bucket, ls's
+  `PRE` marker, source/dest routing) → `commands/<cmd>/`.
+
+On the line (an error *during* a command — exit code + message): file under the
+dimension whose contract you are pinning; use `commands/<cmd>/` only when the
+point is the command's core operation. When unsure, it is a dimension — that is
+the coverage measured toward 100%. Always tag the command so specs stay
+findable per-command across both trees.
+
+## A dimension is covered per command, not once
+
+The same dimension can behave differently across commands or modes, and each
+variant that can differ is its own contract and its own spec. A dimension spec
+exercised through one command does **not** cover that dimension for the others —
+never mark a dimension done from a single command. Enumerate the commands and
+modes where the behavior appears, and cover each cell. The coverage unit is
+**(dimension × command/mode)**, not the dimension alone.
+
+Example — `error_format` is not one contract:
+- single-operation failure (`cp`/`mv`/`ls`, one object): `fatal error: {exception}`, exit 1
+- recursive/sync per-file failure: `{type} failed: {src} to {dest} {exception}`
+- pre-transfer local-path validation: `The user-provided path {p} does not exist.`, exit 255
+
+These render and exit differently; each is a separate spec under `error_format`.
+
 ## The Non-Negotiable Workflow
 
 For every new spec, in this order:
@@ -132,6 +174,11 @@ rationale = "#523: per-file failure line dropped the '{src} to {dest}' segment" 
   the spec's purpose** — "locks the behavior", "so it can't regress",
   "prevents a regression" describe the entire compat suite and add nothing.
   Agents must follow this too. If the refs speak for themselves, omit it.
+  **Carry no point-in-time or test state anywhere in the spec** (description
+  or rationale) — no "verified", no "Rust matches / diverges", no pass/fail
+  snapshot. A spec describes the baseline behavior and its provenance;
+  whether an implementation conforms is what running the suite reports, and
+  it changes over time.
 
 The whole block is optional, but specs derived from the behavioral corpus
 should carry it. There is no separate status ledger or coverage tool —
