@@ -1,0 +1,41 @@
+[test]
+name = "sync_no_progress"
+description = "--no-progress suppresses progress bar but still shows per-file transfer lines for sync"
+tags = ["sync", "output_suppression"]
+
+[[setup.buckets]]
+name = "{bucket}"
+
+[[setup.files]]
+path = "syncdir/a.txt"
+content = "aaa"
+
+[[setup.files]]
+path = "syncdir/b.txt"
+content = "bbb"
+
+[command]
+args = ["s3", "sync", "syncdir", "s3://{bucket}/syncdir/", "--no-progress"]
+
+[expected]
+exit_code = 0
+
+[expected.stdout]
+mode = "unordered"
+value = ["upload: syncdir/a.txt to s3://{bucket}/syncdir/a.txt", "upload: syncdir/b.txt to s3://{bucket}/syncdir/b.txt"]
+
+[expected.stderr]
+mode = "exact"
+value = ""
+
+[[expected.objects]]
+key = "syncdir/a.txt"
+content = "aaa"
+
+[[expected.objects]]
+key = "syncdir/b.txt"
+content = "bbb"
+
+[source]
+refs = ["aws/aws-cli#2747"]
+cli_ref = "awscli/customizations/s3/s3handler.py:105"

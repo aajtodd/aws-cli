@@ -1,0 +1,26 @@
+[test]
+name = "ls_prefix_no_match"
+description = "ls on a valid bucket with a nonexistent prefix exits 1 with no output"
+tags = ["ls", "exit_codes"]
+
+[[setup.buckets]]
+name = "{bucket}"
+
+[command]
+args = ["s3", "ls", "s3://{bucket}/nonexistent-prefix/"]
+
+[expected]
+exit_code = 1
+
+[expected.stdout]
+mode = "exact"
+value = ""
+
+[expected.stderr]
+mode = "exact"
+value = ""
+
+[source]
+refs = ["aws/aws-cli#866", "aws/aws-cli#1008", "aws/aws-cli#5544"]
+cli_ref = "awscli/customizations/s3/subcommands.py:917"
+rationale = "#1008 fixed ls to return 1 when no objects/prefixes match on the first page; #5544 confirms this is still v2 behavior"

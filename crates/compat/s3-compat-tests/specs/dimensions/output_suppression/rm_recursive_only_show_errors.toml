@@ -1,0 +1,41 @@
+[test]
+name = "rm_recursive_only_show_errors"
+description = "--only-show-errors suppresses per-delete output for recursive rm"
+tags = ["rm", "output_suppression"]
+
+[[setup.buckets]]
+name = "{bucket}"
+
+[[setup.objects]]
+key = "dir/a.txt"
+content = "aaa"
+
+[[setup.objects]]
+key = "dir/b.txt"
+content = "bbb"
+
+[command]
+args = ["s3", "rm", "s3://{bucket}/dir/", "--recursive", "--only-show-errors"]
+
+[expected]
+exit_code = 0
+
+[expected.stdout]
+mode = "exact"
+value = ""
+
+[expected.stderr]
+mode = "exact"
+value = ""
+
+[[expected.objects]]
+key = "dir/a.txt"
+exists = false
+
+[[expected.objects]]
+key = "dir/b.txt"
+exists = false
+
+[source]
+refs = ["aws/aws-cli#921"]
+cli_ref = "awscli/customizations/s3/s3handler.py:103"

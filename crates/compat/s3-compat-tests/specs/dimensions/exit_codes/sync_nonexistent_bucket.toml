@@ -1,0 +1,27 @@
+[test]
+name = "sync_nonexistent_bucket"
+description = "sync to a nonexistent destination bucket fails fast with a 'fatal error:' NoSuchBucket (from the comparison ListObjectsV2) and exits 1, before any transfer"
+tags = ["sync", "exit_codes", "error-handling"]
+
+[[setup.files]]
+path = "src/file.txt"
+content = "hello"
+
+[command]
+args = ["s3", "sync", "src", "s3://this-bucket-does-not-exist-compat-99999/"]
+
+[expected]
+exit_code = 1
+
+[expected.stdout]
+mode = "exact"
+value = ""
+
+[expected.stderr]
+mode = "exact"
+value = "fatal error: An error occurred (NoSuchBucket) when calling the ListObjectsV2 operation: The specified bucket does not exist\n"
+
+[source]
+refs = ["aws/aws-cli#376"]
+cli_ref = "awscli/customizations/s3/results.py:339"
+rationale = "sync compares against the destination via ListObjectsV2; NoSuchBucket surfaces as ERROR_FORMAT ('fatal error: {exception}') with exit 1, before any transfer."

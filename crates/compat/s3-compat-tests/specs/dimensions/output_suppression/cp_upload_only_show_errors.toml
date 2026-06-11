@@ -1,0 +1,34 @@
+[test]
+name = "cp_upload_only_show_errors"
+description = "--only-show-errors suppresses progress and transfer line on successful upload"
+tags = ["cp", "output_suppression"]
+
+[[setup.buckets]]
+name = "{bucket}"
+
+[[setup.files]]
+path = "hello.txt"
+content = "hello world"
+
+[command]
+args = ["s3", "cp", "hello.txt", "s3://{bucket}/hello.txt", "--only-show-errors"]
+
+[expected]
+exit_code = 0
+
+[expected.stdout]
+mode = "exact"
+value = ""
+
+[expected.stderr]
+mode = "exact"
+value = ""
+
+[[expected.objects]]
+key = "hello.txt"
+content = "hello world"
+
+[source]
+refs = ["aws/aws-cli#921"]
+cli_ref = "awscli/customizations/s3/s3handler.py:103"
+rationale = "#921 introduced --only-show-errors to suppress all stdout progress/status while still showing errors on stderr"

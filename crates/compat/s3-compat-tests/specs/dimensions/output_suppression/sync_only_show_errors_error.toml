@@ -1,0 +1,27 @@
+[test]
+name = "sync_only_show_errors_error"
+description = "--only-show-errors still shows fatal error on stderr for sync"
+tags = ["sync", "output_suppression"]
+target = "prod_only"
+
+[[setup.files]]
+path = "syncdir/a.txt"
+content = "aaa"
+
+[command]
+args = ["s3", "sync", "syncdir", "s3://this-bucket-does-not-exist-compat-test-xyz/syncdir/", "--only-show-errors"]
+
+[expected]
+exit_code = 1
+
+[expected.stdout]
+mode = "exact"
+value = ""
+
+[expected.stderr]
+mode = "regex"
+value = ["^fatal error: An error occurred \\(NoSuchBucket\\)"]
+
+[source]
+refs = ["aws/aws-cli#921", "aws/aws-cli#883"]
+cli_ref = "awscli/customizations/s3/s3handler.py:103"

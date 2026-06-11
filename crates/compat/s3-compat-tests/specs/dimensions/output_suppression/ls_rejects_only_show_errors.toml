@@ -1,0 +1,23 @@
+[test]
+name = "ls_rejects_only_show_errors"
+description = "--only-show-errors is not accepted on ls (only on transfer commands cp/mv/sync/rm)"
+tags = ["ls", "output_suppression"]
+
+[command]
+args = ["s3", "ls", "--only-show-errors"]
+
+[expected]
+exit_code = 252
+
+[expected.stdout]
+mode = "exact"
+value = ""
+
+[expected.stderr]
+mode = "contains"
+value = ["Unknown options: --only-show-errors"]
+
+[source]
+refs = ["aws/aws-cli#5372", "aws/aws-cli#5573"]
+cli_ref = "awscli/customizations/s3/subcommands.py:743"
+rationale = "#5372, #5573: --only-show-errors and --quiet are defined only on transfer commands (TRANSFER_ARGS) and rm, not on ls/mb/rb"

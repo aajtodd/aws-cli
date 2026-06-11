@@ -1,0 +1,31 @@
+[test]
+name = "cp_streaming_implicit_suppression"
+description = "cp from stdin implicitly enables --only-show-errors (no progress, no transfer line)"
+tags = ["cp", "output_suppression"]
+
+[[setup.buckets]]
+name = "{bucket}"
+
+[command]
+args = ["s3", "cp", "-", "s3://{bucket}/stream.txt"]
+stdin = "stream content"
+
+[expected]
+exit_code = 0
+
+[expected.stdout]
+mode = "exact"
+value = ""
+
+[expected.stderr]
+mode = "exact"
+value = ""
+
+[[expected.objects]]
+key = "stream.txt"
+content = "stream content"
+
+[source]
+refs = ["aws/aws-cli#7688"]
+cli_ref = "awscli/customizations/s3/subcommands.py:1801"
+rationale = "#7688: streaming sets only_show_errors=True implicitly; no --progress flag exists to override"

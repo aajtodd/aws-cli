@@ -1,0 +1,27 @@
+[test]
+name = "mv_upload_quiet_error"
+description = "--quiet suppresses all output including errors on failed mv"
+tags = ["mv", "output_suppression"]
+target = "prod_only"
+
+[[setup.files]]
+path = "hello.txt"
+content = "hello world"
+
+[command]
+args = ["s3", "mv", "hello.txt", "s3://this-bucket-does-not-exist-compat-test-xyz/hello.txt", "--quiet"]
+
+[expected]
+exit_code = 1
+
+[expected.stdout]
+mode = "exact"
+value = ""
+
+[expected.stderr]
+mode = "exact"
+value = ""
+
+[source]
+refs = ["aws/aws-cli#883", "aws/aws-cli#2848"]
+cli_ref = "awscli/customizations/s3/s3handler.py:101"

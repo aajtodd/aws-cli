@@ -1,0 +1,26 @@
+[test]
+name = "cp_recursive_nonexistent_prefix"
+description = "cp --recursive from a nonexistent S3 prefix exits 0 silently with no output"
+tags = ["cp", "exit_codes"]
+
+[[setup.buckets]]
+name = "{bucket}"
+
+[command]
+args = ["s3", "cp", "s3://{bucket}/nonexistent-prefix/", "/tmp/compat-out/", "--recursive"]
+
+[expected]
+exit_code = 0
+
+[expected.stdout]
+mode = "exact"
+value = ""
+
+[expected.stderr]
+mode = "exact"
+value = ""
+
+[source]
+refs = ["aws/aws-cli#2121", "aws/aws-cli#9841"]
+cli_ref = "awscli/customizations/s3/subcommands.py:1593"
+rationale = "#2121/#9841: recursive cp from nonexistent prefix finds no files to transfer, num_tasks_failed=0, exits 0 — asymmetric with non-recursive cp"

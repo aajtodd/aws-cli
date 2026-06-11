@@ -1,0 +1,34 @@
+[test]
+name = "cp_upload_no_progress"
+description = "--no-progress suppresses progress bar but still shows per-file transfer line"
+tags = ["cp", "output_suppression"]
+
+[[setup.buckets]]
+name = "{bucket}"
+
+[[setup.files]]
+path = "hello.txt"
+content = "hello world"
+
+[command]
+args = ["s3", "cp", "hello.txt", "s3://{bucket}/hello.txt", "--no-progress"]
+
+[expected]
+exit_code = 0
+
+[expected.stdout]
+mode = "exact"
+value = "upload: ./hello.txt to s3://{bucket}/hello.txt\n"
+
+[expected.stderr]
+mode = "exact"
+value = ""
+
+[[expected.objects]]
+key = "hello.txt"
+content = "hello world"
+
+[source]
+refs = ["aws/aws-cli#2747", "aws/aws-cli#519"]
+cli_ref = "awscli/customizations/s3/s3handler.py:105"
+rationale = "#2747 introduced --no-progress; the NoProgressResultPrinter prints transfer lines without the progress bar"

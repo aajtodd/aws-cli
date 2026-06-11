@@ -1,0 +1,26 @@
+[test]
+name = "rm_recursive_empty_prefix"
+description = "rm --recursive on an empty prefix exits 0 with no output"
+tags = ["rm", "exit_codes"]
+
+[[setup.buckets]]
+name = "{bucket}"
+
+[command]
+args = ["s3", "rm", "s3://{bucket}/nonexistent-prefix/", "--recursive"]
+
+[expected]
+exit_code = 0
+
+[expected.stdout]
+mode = "exact"
+value = ""
+
+[expected.stderr]
+mode = "exact"
+value = ""
+
+[source]
+refs = ["aws/aws-cli#540"]
+cli_ref = "awscli/customizations/s3/subcommands.py:1593"
+rationale = "#540: nothing to delete is not an error; transfer RC logic returns 0 when num_tasks_failed and num_tasks_warned are both 0"

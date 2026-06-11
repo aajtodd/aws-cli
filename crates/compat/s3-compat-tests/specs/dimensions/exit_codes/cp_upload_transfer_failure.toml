@@ -1,0 +1,28 @@
+[test]
+name = "cp_upload_transfer_failure"
+description = "cp upload that fails at the service level (NoSuchBucket) exits 1"
+tags = ["cp", "exit_codes"]
+target = "prod_only"
+
+[[setup.files]]
+path = "hello.txt"
+content = "hello"
+
+[command]
+args = ["s3", "cp", "hello.txt", "s3://this-bucket-does-not-exist-compat-test-xyz/hello.txt"]
+
+[expected]
+exit_code = 1
+
+[expected.stdout]
+mode = "regex"
+value = ["^Completed \\d+ Bytes/\\d+ Bytes \\([^)]+\\) with 1 file\\(s\\) remaining$"]
+
+[expected.stderr]
+mode = "regex"
+value = ["^upload failed: \\./hello\\.txt to s3://this-bucket-does-not-exist-compat-test-xyz/hello\\.txt An error occurred \\(NoSuchBucket\\).+$"]
+
+[source]
+refs = ["aws/aws-cli#392", "aws/aws-cli#363"]
+cli_ref = "awscli/customizations/s3/subcommands.py:1594"
+rationale = "#392: transfer commands return RC 1 when one or more tasks fail"

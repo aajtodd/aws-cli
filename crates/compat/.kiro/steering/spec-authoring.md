@@ -59,7 +59,7 @@ The same dimension can behave differently across commands or modes, and each
 variant that can differ is its own contract and its own spec. A dimension spec
 exercised through one command does **not** cover that dimension for the others —
 never mark a dimension done from a single command. Enumerate the commands and
-modes where the behavior appears, and cover each cell. The coverage unit is
+modes where the behavior appears, and cover each scenario. The coverage unit is
 **(dimension × command/mode)**, not the dimension alone.
 
 Example — `error_format` is not one contract:
@@ -162,7 +162,15 @@ rationale = "#523: per-file failure line dropped the '{src} to {dest}' segment" 
   is still good provenance if it documents the confusion the spec resolves
   (e.g. a PR claiming UTC on a spec that proves local). `refs` trace *why*
   the behavior was contested; `cli_ref` proves *what* the code does — keep
-  both when available.
+  both when available. **Make the ref's relationship to the baseline legible
+  in `rationale`** when it isn't obvious: a ref may *confirm/define* the
+  baseline (a doc, a by-design decision, or a bug resolved as the current
+  behavior), *request CHANGING* it (an open or declined feature request — the
+  cited behavior is the contested current baseline, NOT what the issue wants:
+  write "#NNNN requests X; v2 still does Y, so this spec locks the Y baseline"
+  and never bend the spec toward the request), or be *a bug fixed into* the
+  baseline (the spec pins the post-fix behavior). State the relationship as a
+  durable fact; never record open/closed status (point-in-time, banned).
 - **`cli_ref`** — the baseline source location as `path:line`, valid at the
   pinned v2 commit recorded in `crates/docs/compat.md` (so line numbers
   don't drift). Optional.
@@ -201,6 +209,15 @@ and should be `exact`. Transfer specs (`cp`, `sync`, `mv`) need `regex`
 because the progress line has `Completed N Bytes/N Bytes ({rate}) ...` with
 a non-deterministic rate.
 
+**Value format by mode:**
+- `exact` — a single string (`value = "...\n"`), compared verbatim after
+  bucket/timestamp normalization.
+- `regex` / `contains` / `unordered` — an ARRAY of strings (`value = ["..."]`):
+  `regex` each pattern must match ≥1 terminal-line; `contains` each substring
+  must appear in the stream; `unordered` the set of lines must match in any
+  order — entries are full lines with NO trailing `\n`.
+- `golden` — no inline `value`; the sibling `.{stdout,stderr}.golden` file holds it.
+
 ## Regex Patterns for Transfer Output
 
 The CLI progress indicator emits `\r` to overwrite a progress line with the
@@ -221,6 +238,16 @@ value = [
 `regex` semantics: **each pattern must match at least one terminal-line.**
 It does NOT assert "exactly N of each" — if you need strict set equality,
 use `unordered`.
+
+## Streaming Input (`[command].stdin`)
+
+For streaming specs that read stdin (`cp - s3://…`), pipe input bytes with the
+optional `stdin` field on `[command]`:
+```toml
+[command]
+args = ["s3", "cp", "-", "s3://{bucket}/k"]
+stdin = "bytes to pipe to the CLI"
+```
 
 ## Placeholder Conventions
 
@@ -246,6 +273,12 @@ use `unordered`.
 - **For `mb` specs**: don't declare `[[setup.buckets]]`. The default
   `{bucket}` placeholder is auto-registered; `create_buckets` only creates
   what's in setup.
+- **Errors requiring a nonexistent bucket:** the mock's PutObject/CreateBucket
+  do NOT enforce bucket existence (uploading to a missing bucket SUCCEEDS on the
+  mock), so cp/mv upload-to-nonexistent-bucket *error* scenarios are `prod_only`.
+  But ListObjectsV2 on a nonexistent bucket DOES return NoSuchBucket on the mock,
+  so `ls`/`sync` failing on a nonexistent bucket are mock+prod. Use a hardcoded,
+  clearly-nonexistent bucket name (not `{bucket}`) for these.
 
 ## Assertion Fields on `[[expected.objects]]`
 

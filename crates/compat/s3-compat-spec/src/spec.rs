@@ -125,10 +125,13 @@ pub struct CommandSpec {
     #[serde(default)]
     pub env: HashMap<String, String>,
     pub pipe_to: Option<Vec<String>>,
-    // TODO: Add `tty: bool` field. When true, the executor should run the CLI
-    // through a pseudo-terminal (pty) so it sees isatty()=true. This enables
-    // testing TTY-specific behavior: progress with \r, ANSI escapes, etc.
-    // Requires a pty crate (e.g., portable-pty or pty-process).
+    // Possible future field: `tty: bool` — run the CLI through a pseudo-terminal
+    // (pty) so it sees isatty()=true, for surfaces whose output depends on a TTY.
+    // NOT needed for `aws s3`: it never calls isatty; progress / carriage-return
+    // rendering is gated by --progress / --progress-multiline (not a TTY) and is
+    // emitted through the pipe, so it is already observable here without a pty.
+    // Retained as an option for future non-s3 surfaces. Would require a pty crate
+    // (e.g. portable-pty or pty-process).
 }
 
 #[derive(Clone, Debug, Deserialize)]

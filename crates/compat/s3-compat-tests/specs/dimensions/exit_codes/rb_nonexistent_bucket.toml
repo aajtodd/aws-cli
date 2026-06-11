@@ -1,0 +1,23 @@
+[test]
+name = "rb_nonexistent_bucket"
+description = "rb on a non-existent bucket exits 1 with 'remove_bucket failed' on stderr"
+tags = ["rb", "exit_codes"]
+
+[command]
+args = ["s3", "rb", "s3://this-bucket-does-not-exist-compat-test-xyz"]
+
+[expected]
+exit_code = 1
+
+[expected.stdout]
+mode = "exact"
+value = ""
+
+[expected.stderr]
+mode = "regex"
+value = ["^remove_bucket failed: s3://this-bucket-does-not-exist-compat-test-xyz .+NoSuchBucket.+$"]
+
+[source]
+refs = ["aws/aws-cli#9386"]
+cli_ref = "awscli/customizations/s3/subcommands.py:1328"
+rationale = "#9386: rb on nonexistent bucket exits 1 via RbCommand's own exception handler, not via the general service error path (254)"

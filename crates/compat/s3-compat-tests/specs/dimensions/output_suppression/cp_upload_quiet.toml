@@ -1,0 +1,34 @@
+[test]
+name = "cp_upload_quiet"
+description = "--quiet suppresses all output on successful upload"
+tags = ["cp", "output_suppression"]
+
+[[setup.buckets]]
+name = "{bucket}"
+
+[[setup.files]]
+path = "hello.txt"
+content = "hello world"
+
+[command]
+args = ["s3", "cp", "hello.txt", "s3://{bucket}/hello.txt", "--quiet"]
+
+[expected]
+exit_code = 0
+
+[expected.stdout]
+mode = "exact"
+value = ""
+
+[expected.stderr]
+mode = "exact"
+value = ""
+
+[[expected.objects]]
+key = "hello.txt"
+content = "hello world"
+
+[source]
+refs = ["aws/aws-cli#2500"]
+cli_ref = "awscli/customizations/s3/s3handler.py:101"
+rationale = "#2500: --quiet suppresses all output; the handler installs no result printer"

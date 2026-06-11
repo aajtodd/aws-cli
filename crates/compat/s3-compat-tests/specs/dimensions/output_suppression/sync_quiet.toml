@@ -1,0 +1,33 @@
+[test]
+name = "sync_quiet"
+description = "--quiet suppresses all output for sync"
+tags = ["sync", "output_suppression"]
+
+[[setup.buckets]]
+name = "{bucket}"
+
+[[setup.files]]
+path = "syncdir/a.txt"
+content = "aaa"
+
+[command]
+args = ["s3", "sync", "syncdir", "s3://{bucket}/syncdir/", "--quiet"]
+
+[expected]
+exit_code = 0
+
+[expected.stdout]
+mode = "exact"
+value = ""
+
+[expected.stderr]
+mode = "exact"
+value = ""
+
+[[expected.objects]]
+key = "syncdir/a.txt"
+content = "aaa"
+
+[source]
+refs = ["aws/aws-cli#2500"]
+cli_ref = "awscli/customizations/s3/s3handler.py:101"

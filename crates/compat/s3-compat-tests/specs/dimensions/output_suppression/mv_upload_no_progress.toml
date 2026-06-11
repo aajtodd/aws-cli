@@ -1,0 +1,33 @@
+[test]
+name = "mv_upload_no_progress"
+description = "--no-progress suppresses progress bar but still shows transfer line for mv"
+tags = ["mv", "output_suppression"]
+
+[[setup.buckets]]
+name = "{bucket}"
+
+[[setup.files]]
+path = "hello.txt"
+content = "hello world"
+
+[command]
+args = ["s3", "mv", "hello.txt", "s3://{bucket}/hello.txt", "--no-progress"]
+
+[expected]
+exit_code = 0
+
+[expected.stdout]
+mode = "exact"
+value = "move: ./hello.txt to s3://{bucket}/hello.txt\n"
+
+[expected.stderr]
+mode = "exact"
+value = ""
+
+[[expected.objects]]
+key = "hello.txt"
+content = "hello world"
+
+[source]
+refs = ["aws/aws-cli#2747"]
+cli_ref = "awscli/customizations/s3/s3handler.py:105"

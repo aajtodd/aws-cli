@@ -1,0 +1,26 @@
+[test]
+name = "rb_path_with_key"
+description = "rb with a key in the path errors with validation message and exits 252"
+tags = ["rb", "exit_codes"]
+
+[[setup.buckets]]
+name = "{bucket}"
+
+[command]
+args = ["s3", "rb", "s3://{bucket}/some-key"]
+
+[expected]
+exit_code = 252
+
+[expected.stdout]
+mode = "exact"
+value = ""
+
+[expected.stderr]
+mode = "exact"
+value = "\nPlease specify a valid bucket name only. E.g. s3://{bucket}\n"
+
+[source]
+refs = ["aws/aws-cli#1477"]
+cli_ref = "awscli/customizations/s3/subcommands.py:1311"
+rationale = "#1477: rb refuses paths containing keys with a ParamValidationError (exit 252)"
