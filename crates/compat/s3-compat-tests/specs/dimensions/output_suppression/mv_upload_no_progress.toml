@@ -30,4 +30,4 @@ content = "hello world"
 
 [source]
 refs = ["aws/aws-cli#2747"]
-cli_ref = "awscli/customizations/s3/s3handler.py:105"
+cli_ref = "awscli/customizations/s3/s3handler.py:108"

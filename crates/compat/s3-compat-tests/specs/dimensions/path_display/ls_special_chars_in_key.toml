@@ -1,6 +1,6 @@
 [test]
 name = "ls_special_chars_in_key"
-description = "s3 ls displays object keys verbatim — space, '=', '+', '%', '&', and non-ASCII are shown raw, never percent-encoded. v2 decodes the ListObjectsV2 EncodingType=url round-trip; #1805 (v1 percent-encoded output) is fixed."
+description = "s3 ls displays object keys verbatim — space, '=', '+', '%', '&', and non-ASCII are shown raw, never percent-encoded. v2 decodes the ListObjectsV2 EncodingType=url round-trip; #1805 reported the v1 percent-encoded output."
 tags = ["ls", "path_display", "output-format"]
 
 [[setup.buckets]]

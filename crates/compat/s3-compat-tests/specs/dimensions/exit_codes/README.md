@@ -4,7 +4,7 @@ Exit codes communicate success, failure, and warnings to calling processes. Tran
 
 ## Coverage
 
-35 scenarios — 7 spec, 9 covered, 12 unspeccable, 7 n/a
+39 scenarios — 7 spec, 11 covered, 14 unspeccable, 7 n/a
 (1 spec is prod-only)
 
 | Scenario (command / mode) | Spec | Classification |
@@ -36,7 +36,7 @@ Exit codes communicate success, failure, and warnings to calling processes. Tran
 | sync / success exit 0 | commands/sync/local_to_s3.toml | covered |
 | sync / partial failure exit 1 | — | unspeccable: fault injection |
 | sync / nonexistent bucket exit non-zero | sync_nonexistent_bucket.toml | spec |
-| sync / delete from nonexistent source | — | unspeccable: sync --delete source validation |
+| sync / delete from nonexistent source | error_format/sync_delete_nonexistent_source.toml | covered |
 | glacier warning exit 2 | — | unspeccable: glacier storage class objects in mock |
 | error RC precedence over warning RC | — | unspeccable: glacier storage class objects in mock |
 | SIGINT exit 130 | — | unspeccable: signal delivery to child process |

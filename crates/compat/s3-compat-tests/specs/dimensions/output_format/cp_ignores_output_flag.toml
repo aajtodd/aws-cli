@@ -1,0 +1,33 @@
+[test]
+name = "cp_ignores_output_flag"
+description = "s3 cp produces custom transfer format regardless of --output table"
+tags = ["cp", "output_format"]
+
+[[setup.buckets]]
+name = "{bucket}"
+
+[[setup.files]]
+path = "hello.txt"
+content = "hello world"
+
+[command]
+args = ["s3", "cp", "hello.txt", "s3://{bucket}/hello.txt", "--output", "table"]
+
+[expected]
+exit_code = 0
+
+[expected.stdout]
+mode = "regex"
+value = [
+    "^Completed 11 Bytes/11 Bytes \\([^)]+\\) with 1 file\\(s\\) remaining$",
+    "^upload: \\./hello\\.txt to s3://\\{bucket\\}/hello\\.txt$",
+]
+
+[expected.stderr]
+mode = "exact"
+value = ""
+
+[source]
+refs = ["aws/aws-cli#858", "aws/aws-cli#7634"]
+cli_ref = "awscli/customizations/s3/subcommands.py:1051"
+rationale = "#858 requests that s3 commands error on --output; #7634 requests documenting the no-op; v2 silently ignores --output for transfer commands"

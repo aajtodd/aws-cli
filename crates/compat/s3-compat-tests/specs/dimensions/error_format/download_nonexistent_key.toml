@@ -2,7 +2,6 @@
 name = "download_nonexistent_key"
 description = "cp download of a nonexistent S3 key fails with the 'fatal error:' single-operation format (ERROR_FORMAT) and exit 1"
 tags = ["cp", "download", "error-handling", "error_format"]
-target = "mock_only"
 
 [[setup.buckets]]
 name = "{bucket}"

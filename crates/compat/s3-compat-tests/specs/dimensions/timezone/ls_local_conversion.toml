@@ -23,6 +23,10 @@ exit_code = 0
 mode = "exact"
 value = "2024-06-15 07:30:00          5 file1.txt\n"
 
+[expected.stderr]
+mode = "exact"
+value = ""
+
 [source]
 refs = ["aws/aws-cli#2784", "aws/aws-cli#3097"]
 cli_ref = "awscli/customizations/s3/subcommands.py:919"

@@ -1,0 +1,32 @@
+[test]
+name = "ls_ignores_output_flag"
+description = "s3 ls produces custom text format regardless of --output json"
+tags = ["ls", "output_format"]
+
+[[setup.buckets]]
+name = "{bucket}"
+
+[[setup.objects]]
+key = "hello.txt"
+content = "hello world"
+
+[command]
+args = ["s3", "ls", "s3://{bucket}/", "--output", "json"]
+
+[expected]
+exit_code = 0
+
+[expected.stdout]
+mode = "regex"
+value = [
+    "^\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}\\s+11 hello\\.txt$",
+]
+
+[expected.stderr]
+mode = "exact"
+value = ""
+
+[source]
+refs = ["aws/aws-cli#709", "aws/aws-cli#7634"]
+cli_ref = "awscli/customizations/s3/subcommands.py:858"
+rationale = "#709 requests JSON output for s3 ls; #7634 requests documenting the incompatibility; v2 still ignores --output and uses its bespoke text format"

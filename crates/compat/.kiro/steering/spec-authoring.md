@@ -170,7 +170,9 @@ rationale = "#523: per-file failure line dropped the '{src} to {dest}' segment" 
   write "#NNNN requests X; v2 still does Y, so this spec locks the Y baseline"
   and never bend the spec toward the request), or be *a bug fixed into* the
   baseline (the spec pins the post-fix behavior). State the relationship as a
-  durable fact; never record open/closed status (point-in-time, banned).
+  durable fact; never record open/closed status (point-in-time, banned). The wished-for
+  change a *requests-change* ref represents is DX signal tracked **outside** the spec suite
+  (a separate improvement backlog) — a spec encodes only the baseline, never the request.
 - **`cli_ref`** — the baseline source location as `path:line`, valid at the
   pinned v2 commit recorded in `crates/docs/compat.md` (so line numbers
   don't drift). Optional.

@@ -1,0 +1,31 @@
+[test]
+name = "cp_upload_failure_format"
+description = "single-file upload failure renders FAILURE_FORMAT '{transfer_type} failed: {src} to {dest} {exception}' on stderr, exit 1"
+tags = ["cp", "error_format"]
+target = "prod_only"
+
+[[setup.files]]
+path = "fail.txt"
+content = "test"
+
+[command]
+args = ["s3", "cp", "fail.txt", "s3://this-bucket-definitely-does-not-exist-xyzzy123/key.txt"]
+
+[expected]
+exit_code = 1
+
+[expected.stdout]
+mode = "regex"
+value = [
+    "^Completed 4 Bytes/4 Bytes \\([^)]+\\) with 1 file\\(s\\) remaining$",
+]
+
+[expected.stderr]
+mode = "regex"
+value = [
+    "^upload failed: \\./fail\\.txt to s3://this-bucket-definitely-does-not-exist-xyzzy123/key\\.txt An error occurred \\(NoSuchBucket\\) when calling the PutObject operation: The specified bucket does not exist$",
+]
+
+[source]
+cli_ref = "awscli/customizations/s3/results.py:335"
+rationale = "A single-file transfer failure is a per-file FailureResult rendered via FAILURE_FORMAT '{transfer_type} failed: {src} to {dest} {exception}' on stderr — distinct from the pre-transfer fatal-error path ('fatal error: {exception}', results.py:339) used when validation/HEAD fails before any transfer is submitted."

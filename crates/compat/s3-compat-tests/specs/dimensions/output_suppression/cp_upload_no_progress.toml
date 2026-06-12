@@ -30,5 +30,5 @@ content = "hello world"
 
 [source]
 refs = ["aws/aws-cli#2747", "aws/aws-cli#519"]
-cli_ref = "awscli/customizations/s3/s3handler.py:105"
+cli_ref = "awscli/customizations/s3/s3handler.py:108"
 rationale = "#2747 introduced --no-progress; the NoProgressResultPrinter prints transfer lines without the progress bar"

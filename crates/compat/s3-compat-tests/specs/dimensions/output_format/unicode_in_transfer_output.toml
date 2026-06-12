@@ -1,0 +1,34 @@
+[test]
+name = "unicode_in_transfer_output"
+description = "non-ASCII characters in key names are displayed as UTF-8 in transfer and ls output"
+tags = ["cp", "ls", "output_format"]
+
+[[setup.buckets]]
+name = "{bucket}"
+
+[[setup.files]]
+path = "café.txt"
+content = "hello"
+
+[command]
+args = ["s3", "cp", "café.txt", "s3://{bucket}/café.txt", "--no-progress"]
+
+[expected]
+exit_code = 0
+
+[expected.stdout]
+mode = "exact"
+value = "upload: ./café.txt to s3://{bucket}/café.txt\n"
+
+[expected.stderr]
+mode = "exact"
+value = ""
+
+[[expected.objects]]
+key = "café.txt"
+content = "hello"
+
+[source]
+refs = ["aws/aws-cli#2726", "aws/aws-cli#2740"]
+cli_ref = "awscli/customizations/s3/results.py:333"
+rationale = "#2726 switched the result printer to unicode strings; #2740 fixed unicode in progress display; v2 outputs non-ASCII paths as UTF-8 without escaping"

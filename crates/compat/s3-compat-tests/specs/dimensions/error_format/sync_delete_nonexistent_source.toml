@@ -1,0 +1,34 @@
+[test]
+name = "sync_delete_nonexistent_source"
+description = "sync --delete with a nonexistent local source fails up front (exit 255, user-provided-path message) BEFORE listing or deleting the destination — --delete never fires and a pre-existing object survives"
+tags = ["sync", "error-handling", "error_format", "exit_codes"]
+
+[[setup.buckets]]
+name = "{bucket}"
+
+[[setup.objects]]
+key = "keep.txt"
+content = "must survive"
+
+[command]
+args = ["s3", "sync", "nope-dir", "s3://{bucket}/", "--delete"]
+
+[expected]
+exit_code = 255
+
+[expected.stdout]
+mode = "exact"
+value = ""
+
+[expected.stderr]
+mode = "exact"
+value = "\nThe user-provided path nope-dir does not exist.\n"
+
+[[expected.objects]]
+key = "keep.txt"
+content = "must survive"
+exists = true
+
+[source]
+cli_ref = "awscli/customizations/s3/subcommands.py:1829"
+rationale = "sync validates the local source path before any S3 interaction; a missing source exits 255 with the user-provided-path message, so --delete never reaches the destination and the pre-existing object survives."

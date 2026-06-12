@@ -1,0 +1,32 @@
+[test]
+name = "presign_url_format"
+description = "s3 presign outputs a single HTTPS URL followed by a newline"
+tags = ["presign", "output_format"]
+
+[[setup.buckets]]
+name = "{bucket}"
+
+[[setup.objects]]
+key = "hello.txt"
+content = "hello world"
+
+[command]
+args = ["s3", "presign", "s3://{bucket}/hello.txt"]
+
+[expected]
+exit_code = 0
+
+[expected.stdout]
+mode = "regex"
+value = [
+    "^https?://.*\\{bucket\\}.*/hello\\.txt\\?.*X-Amz-Signature=.*$",
+]
+
+[expected.stderr]
+mode = "exact"
+value = ""
+
+[source]
+refs = ["aws/aws-cli#2113"]
+cli_ref = "awscli/customizations/s3/subcommands.py:1045"
+rationale = "#2113 added the presign command; v2 outputs a single presigned URL to stdout followed by a newline"
