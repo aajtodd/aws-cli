@@ -1,0 +1,35 @@
+[test]
+name = "mv_s3_self_move_rejected"
+description = "mv s3→s3 onto itself is rejected with error and exit 252"
+tags = ["mv", "path_normalization"]
+target = "prod_only"
+
+[[setup.buckets]]
+name = "{bucket}"
+
+[[setup.objects]]
+key = "myfile.txt"
+content = "do_not_delete"
+
+[command]
+args = ["s3", "mv", "s3://{bucket}/myfile.txt", "s3://{bucket}/myfile.txt"]
+
+[expected]
+exit_code = 252
+
+[expected.stdout]
+mode = "exact"
+value = ""
+
+[expected.stderr]
+mode = "exact"
+value = "\nCannot mv a file onto itself: s3://{bucket}/myfile.txt - s3://{bucket}/myfile.txt\n"
+
+[[expected.objects]]
+key = "myfile.txt"
+content = "do_not_delete"
+
+[source]
+refs = ["aws/aws-cli#831"]
+cli_ref = "awscli/customizations/s3/subcommands.py:1909"
+rationale = "#831 requests self-move rejection; v2 implements it — mv onto itself emits error to stderr and exits 252 without deleting the object."

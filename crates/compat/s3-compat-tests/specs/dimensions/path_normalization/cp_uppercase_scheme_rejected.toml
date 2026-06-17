@@ -1,0 +1,30 @@
+[test]
+name = "cp_uppercase_scheme_rejected"
+description = "cp rejects uppercase S3:// scheme — case-sensitive check does not recognize it as an S3 path, falling through to 'Invalid argument type'"
+tags = ["cp", "path_normalization"]
+
+[[setup.buckets]]
+name = "{bucket}"
+
+[[setup.files]]
+path = "upload.txt"
+content = "data"
+
+[command]
+args = ["s3", "cp", "upload.txt", "S3://{bucket}/upload.txt"]
+
+[expected]
+exit_code = 252
+
+[expected.stdout]
+mode = "exact"
+value = ""
+
+[expected.stderr]
+mode = "contains"
+value = ["Invalid argument type"]
+
+[source]
+refs = ["aws/aws-cli#2925"]
+cli_ref = "awscli/customizations/s3/subcommands.py:1958"
+rationale = "#2925 reports S3:// worked for cp in v1; v2 rejects it — check_path_type classifies paths via startswith('s3://') case-sensitively, so S3:// falls through to 'local', producing an invalid 'locallocal' path type."

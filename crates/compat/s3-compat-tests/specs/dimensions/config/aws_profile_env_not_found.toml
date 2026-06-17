@@ -1,0 +1,28 @@
+[test]
+name = "aws_profile_env_not_found"
+description = "AWS_PROFILE set to nonexistent profile exits 255 with profile-not-found error"
+tags = ["ls", "config"]
+
+[[setup.files]]
+path = "aws_config"
+content = "[default]\nregion = us-east-2\n"
+
+[command]
+args = ["s3", "ls"]
+env = { "AWS_CONFIG_FILE" = "./aws_config", "AWS_SHARED_CREDENTIALS_FILE" = "/dev/null", "AWS_PROFILE" = "ghost-profile" }
+
+[expected]
+exit_code = 255
+
+[expected.stdout]
+mode = "exact"
+value = ""
+
+[expected.stderr]
+mode = "exact"
+value = "\nThe config profile (ghost-profile) could not be found\n"
+
+[source]
+refs = ["aws/aws-cli#1281"]
+cli_ref = "awscli/botocore/exceptions.py:290"
+rationale = "#1281 documents AWS_PROFILE; a nonexistent profile produces the same ProfileNotFound as --profile"

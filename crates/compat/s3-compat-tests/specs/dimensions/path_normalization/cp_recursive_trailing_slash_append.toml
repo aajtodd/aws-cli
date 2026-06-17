@@ -1,0 +1,46 @@
+[test]
+name = "cp_recursive_trailing_slash_append"
+description = "cp --recursive to s3://bucket/prefix appends / to prefix; files land under prefix/"
+tags = ["cp", "path_normalization", "recursive"]
+
+[[setup.buckets]]
+name = "{bucket}"
+
+[[setup.files]]
+path = "src/one.txt"
+content = "aaaa"
+
+[[setup.files]]
+path = "src/two.txt"
+content = "bbbb"
+
+[command]
+args = ["s3", "cp", "src/", "s3://{bucket}/prefix", "--recursive"]
+
+[expected]
+exit_code = 0
+
+[expected.stdout]
+mode = "regex"
+value = [
+    "^Completed 8 Bytes/8 Bytes \\([^)]+\\) with 1 file\\(s\\) remaining$",
+    "^upload: src/one\\.txt to s3://\\{bucket\\}/prefix/one\\.txt$",
+    "^upload: src/two\\.txt to s3://\\{bucket\\}/prefix/two\\.txt$",
+]
+
+[expected.stderr]
+mode = "exact"
+value = ""
+
+[[expected.objects]]
+key = "prefix/one.txt"
+content = "aaaa"
+
+[[expected.objects]]
+key = "prefix/two.txt"
+content = "bbbb"
+
+[source]
+refs = ["aws/aws-cli#1454", "aws/aws-cli#4424"]
+cli_ref = "awscli/customizations/s3/subcommands.py:1935"
+rationale = "#1454 and #4424 request prefix-based selection without trailing-slash append; v2 still appends / to dest prefix in recursive operations, so this spec locks the append behavior."

@@ -1,0 +1,37 @@
+[test]
+name = "sync_no_double_decode_percent"
+description = "sync s3→local preserves literal percent-encoding in keys; file%2Bname.txt stays as-is (no decoding to file+name.txt)"
+tags = ["sync", "path_normalization"]
+
+[[setup.buckets]]
+name = "{bucket}"
+
+[[setup.objects]]
+key = "file%2Bname.txt"
+content = "pct_content"
+
+[command]
+args = ["s3", "sync", "s3://{bucket}/", "dst/"]
+
+[expected]
+exit_code = 0
+
+[expected.stdout]
+mode = "regex"
+value = [
+    "^Completed 11 Bytes/11 Bytes \\([^)]+\\) with \\d+ file\\(s\\) remaining$",
+    "^download: s3://\\{bucket\\}/file%2Bname\\.txt to dst/file%2Bname\\.txt$",
+]
+
+[expected.stderr]
+mode = "exact"
+value = ""
+
+[[expected.files]]
+path = "dst/file%2Bname.txt"
+content = "pct_content"
+
+[source]
+refs = ["aws/aws-cli#862"]
+cli_ref = "awscli/customizations/s3/utils.py:248"
+rationale = "v2 treats S3 keys as literal bytes and does not URL-decode them when constructing local paths — a key containing %2B yields a filename with literal %2B. cli_ref is the literal-key handling. #862 is the related s3→s3 'don't double-decode keys' fix; this spec pins the s3→local manifestation of the same literal-key contract."

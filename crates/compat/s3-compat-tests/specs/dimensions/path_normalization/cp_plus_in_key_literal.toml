@@ -1,0 +1,37 @@
+[test]
+name = "cp_plus_in_key_literal"
+description = "cp with '+' in S3 key path treats it literally — the key stored in S3 is the literal '+' character, not a decoded space; the API layer URL-encodes internally"
+tags = ["cp", "path_normalization"]
+
+[[setup.buckets]]
+name = "{bucket}"
+
+[[setup.files]]
+path = "data.txt"
+content = "plus test"
+
+[command]
+args = ["s3", "cp", "data.txt", "s3://{bucket}/a+b.txt"]
+
+[expected]
+exit_code = 0
+
+[expected.stdout]
+mode = "regex"
+value = [
+    "^Completed 9 Bytes/9 Bytes \\([^)]+\\) with 1 file\\(s\\) remaining$",
+    "^upload: \\./data\\.txt to s3://\\{bucket\\}/a\\+b\\.txt$",
+]
+
+[expected.stderr]
+mode = "exact"
+value = ""
+
+[[expected.objects]]
+key = "a+b.txt"
+content = "plus test"
+
+[source]
+refs = ["aws/aws-cli#314"]
+cli_ref = "awscli/customizations/s3/utils.py:248"
+rationale = "#314 reported + not being properly URL-encoded in API calls; fixed so user-facing paths use literal + and the SDK encodes as %2B internally. The key is stored literally."

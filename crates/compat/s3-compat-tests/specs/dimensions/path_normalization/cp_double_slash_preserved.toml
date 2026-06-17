@@ -1,0 +1,37 @@
+[test]
+name = "cp_double_slash_preserved"
+description = "cp with double slashes in S3 key path preserves them literally — no path normalization is applied; the key foo//bar.txt is stored exactly as specified"
+tags = ["cp", "path_normalization"]
+
+[[setup.buckets]]
+name = "{bucket}"
+
+[[setup.files]]
+path = "data.txt"
+content = "double slash"
+
+[command]
+args = ["s3", "cp", "data.txt", "s3://{bucket}/foo//bar.txt"]
+
+[expected]
+exit_code = 0
+
+[expected.stdout]
+mode = "regex"
+value = [
+    "^Completed 12 Bytes/12 Bytes \\([^)]+\\) with 1 file\\(s\\) remaining$",
+    "^upload: \\./data\\.txt to s3://\\{bucket\\}/foo//bar\\.txt$",
+]
+
+[expected.stderr]
+mode = "exact"
+value = ""
+
+[[expected.objects]]
+key = "foo//bar.txt"
+content = "double slash"
+
+[source]
+refs = ["aws/aws-cli#421", "aws/aws-cli#3370"]
+cli_ref = "awscli/customizations/s3/utils.py:248"
+rationale = "#421 reported double-slash upload failures; v2 preserves literal keys without normalization. #3370 reports this causes sync re-download issues (a known bug, not a feature), but the upload contract is: key bytes are preserved."

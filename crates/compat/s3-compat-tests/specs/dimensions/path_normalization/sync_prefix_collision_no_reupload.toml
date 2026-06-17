@@ -1,0 +1,49 @@
+[test]
+name = "sync_prefix_collision_no_reupload"
+description = "sync local→s3 correctly distinguishes xyz/ from xyz2/ (no prefix substring confusion)"
+tags = ["sync", "path_normalization"]
+
+[[setup.buckets]]
+name = "{bucket}"
+
+[[setup.objects]]
+key = "xyz/a.txt"
+content = "aaa"
+
+[[setup.objects]]
+key = "xyz2/b.txt"
+content = "bbb"
+
+[[setup.files]]
+path = "src/xyz/a.txt"
+content = "aaa"
+
+[[setup.files]]
+path = "src/xyz2/b.txt"
+content = "bbb"
+
+[command]
+args = ["s3", "sync", "src/", "s3://{bucket}/", "--size-only"]
+
+[expected]
+exit_code = 0
+
+[expected.stdout]
+mode = "exact"
+value = ""
+
+[expected.stderr]
+mode = "exact"
+value = ""
+
+[[expected.objects]]
+key = "xyz/a.txt"
+content = "aaa"
+
+[[expected.objects]]
+key = "xyz2/b.txt"
+content = "bbb"
+
+[source]
+refs = ["aws/aws-cli#843"]
+rationale = "#843 reported re-upload when sibling directories share a name prefix (xyz treated as substring of xyz2); v2 correctly distinguishes prefixes. With --size-only and matching content, sync produces no transfers."

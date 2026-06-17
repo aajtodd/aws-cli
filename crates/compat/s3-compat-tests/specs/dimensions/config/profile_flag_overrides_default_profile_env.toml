@@ -1,0 +1,28 @@
+[test]
+name = "profile_flag_overrides_default_profile_env"
+description = "--profile flag takes precedence over AWS_DEFAULT_PROFILE env var"
+tags = ["ls", "config"]
+
+[[setup.files]]
+path = "aws_config"
+content = "[profile fromenv]\nregion = us-east-2\n\n[profile fromflag]\nregion = us-east-2\n"
+
+[command]
+args = ["s3", "ls", "--profile", "nonexistent-flag-profile"]
+env = { "AWS_CONFIG_FILE" = "./aws_config", "AWS_SHARED_CREDENTIALS_FILE" = "/dev/null", "AWS_DEFAULT_PROFILE" = "fromenv" }
+
+[expected]
+exit_code = 255
+
+[expected.stdout]
+mode = "exact"
+value = ""
+
+[expected.stderr]
+mode = "exact"
+value = "\nThe config profile (nonexistent-flag-profile) could not be found\n"
+
+[source]
+refs = ["aws/aws-cli#370"]
+cli_ref = "awscli/botocore/session.py:271"
+rationale = "#370 documents --profile and AWS_DEFAULT_PROFILE; the flag value is used for profile lookup (ProfileNotFound for the flag value, not the env value)"

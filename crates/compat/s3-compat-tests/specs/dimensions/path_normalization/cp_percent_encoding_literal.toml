@@ -1,0 +1,37 @@
+[test]
+name = "cp_percent_encoding_literal"
+description = "User input with percent-encoded characters (e.g. %20) is treated literally — %20 becomes the literal key characters '%', '2', '0', not a decoded space"
+tags = ["cp", "path_normalization"]
+
+[[setup.buckets]]
+name = "{bucket}"
+
+[[setup.files]]
+path = "data.txt"
+content = "pct test"
+
+[command]
+args = ["s3", "cp", "data.txt", "s3://{bucket}/key%20name.txt"]
+
+[expected]
+exit_code = 0
+
+[expected.stdout]
+mode = "regex"
+value = [
+    "^Completed 8 Bytes/8 Bytes \\([^)]+\\) with 1 file\\(s\\) remaining$",
+    "^upload: \\./data\\.txt to s3://\\{bucket\\}/key%20name\\.txt$",
+]
+
+[expected.stderr]
+mode = "exact"
+value = ""
+
+[[expected.objects]]
+key = "key%20name.txt"
+content = "pct test"
+
+[source]
+refs = ["aws/aws-cli#2379"]
+cli_ref = "awscli/customizations/s3/utils.py:248"
+rationale = "#2379 requests that %20 be decoded as space; v2 does NOT decode — user input is literal. Percent characters in user-provided paths are stored as-is."

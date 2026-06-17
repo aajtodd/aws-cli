@@ -1,0 +1,23 @@
+[test]
+name = "mb_requires_s3_prefix"
+description = "mb requires s3:// prefix — bare bucket name without prefix produces 'Invalid argument type' error"
+tags = ["mb", "path_normalization"]
+
+[command]
+args = ["s3", "mb", "some-bucket-name"]
+
+[expected]
+exit_code = 252
+
+[expected.stdout]
+mode = "exact"
+value = ""
+
+[expected.stderr]
+mode = "contains"
+value = ["Invalid argument type"]
+
+[source]
+refs = ["aws/aws-cli#304"]
+cli_ref = "awscli/customizations/s3/subcommands.py:1239"
+rationale = "#304 documents user confusion about the s3:// prefix; v2 enforces it on mb/rb/cp/mv (not ls). mb without s3:// exits with 'Invalid argument type'."

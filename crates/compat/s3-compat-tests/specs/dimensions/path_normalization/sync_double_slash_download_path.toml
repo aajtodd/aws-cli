@@ -1,0 +1,46 @@
+[test]
+name = "sync_double_slash_download_path"
+description = "sync s3→local downloads key with // to local path with single / (double-slash collapsed)"
+tags = ["sync", "path_normalization"]
+
+[[setup.buckets]]
+name = "{bucket}"
+
+[[setup.objects]]
+key = "dir//file.txt"
+content = "dblslash"
+
+[[setup.objects]]
+key = "dir/normal.txt"
+content = "normpath"
+
+[command]
+args = ["s3", "sync", "s3://{bucket}/", "dst/"]
+
+[expected]
+exit_code = 0
+
+[expected.stdout]
+mode = "regex"
+value = [
+    "^Completed 16 Bytes/16 Bytes \\([^)]+\\) with \\d+ file\\(s\\) remaining$",
+    "^download: s3://\\{bucket\\}/dir//file\\.txt to dst/dir/file\\.txt$",
+    "^download: s3://\\{bucket\\}/dir/normal\\.txt to dst/dir/normal\\.txt$",
+]
+
+[expected.stderr]
+mode = "exact"
+value = ""
+
+[[expected.files]]
+path = "dst/dir/file.txt"
+content = "dblslash"
+
+[[expected.files]]
+path = "dst/dir/normal.txt"
+content = "normpath"
+
+[source]
+refs = ["aws/aws-cli#3370", "aws/aws-cli#6253"]
+cli_ref = "awscli/customizations/s3/filegenerator.py:367"
+rationale = "#3370 reports re-download with // keys; #6253 reports overwrite when // and / map to same local path. v2 still collapses double slashes to single in local path (OS path normalization), causing both issues. This spec pins the download mapping."

@@ -1,0 +1,26 @@
+[test]
+name = "ls_uppercase_scheme_rejected"
+description = "ls rejects uppercase S3:// scheme — case-sensitive prefix check treats 'S3:' as a bucket name, which fails bucket name validation"
+tags = ["ls", "path_normalization"]
+
+[[setup.buckets]]
+name = "{bucket}"
+
+[command]
+args = ["s3", "ls", "S3://{bucket}/"]
+
+[expected]
+exit_code = 252
+
+[expected.stdout]
+mode = "exact"
+value = ""
+
+[expected.stderr]
+mode = "contains"
+value = ["Invalid bucket name \"S3:\""]
+
+[source]
+refs = ["aws/aws-cli#2925"]
+cli_ref = "awscli/customizations/s3/subcommands.py:799"
+rationale = "#2925 reports uppercase S3:// works for cp but not ls; v2 rejects it for both — the case-sensitive startswith('s3://') check means 'S3://bucket' is parsed as bucket='S3:', which fails validation."

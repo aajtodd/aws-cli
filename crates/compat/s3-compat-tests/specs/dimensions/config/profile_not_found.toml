@@ -1,0 +1,28 @@
+[test]
+name = "profile_not_found"
+description = "--profile with a nonexistent profile name exits 255 with descriptive error"
+tags = ["ls", "config"]
+
+[[setup.files]]
+path = "aws_config"
+content = "[default]\nregion = us-east-2\n"
+
+[command]
+args = ["s3", "ls", "--profile", "nonexistent-profile-xyz"]
+env = { "AWS_CONFIG_FILE" = "./aws_config", "AWS_SHARED_CREDENTIALS_FILE" = "/dev/null" }
+
+[expected]
+exit_code = 255
+
+[expected.stdout]
+mode = "exact"
+value = ""
+
+[expected.stderr]
+mode = "exact"
+value = "\nThe config profile (nonexistent-profile-xyz) could not be found\n"
+
+[source]
+refs = ["aws/aws-cli#118", "aws/aws-cli#133"]
+cli_ref = "awscli/botocore/exceptions.py:290"
+rationale = "#118 and #133 document that --profile must select a [profile NAME] section; a missing profile produces ProfileNotFound"

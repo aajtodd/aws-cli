@@ -1,0 +1,28 @@
+[test]
+name = "config_file_requires_profile_prefix"
+description = "Config file [X] without 'profile ' prefix is not recognized; profile not found"
+tags = ["ls", "config"]
+
+[[setup.files]]
+path = "aws_config"
+content = "[testuser]\nregion = us-east-2\n"
+
+[command]
+args = ["s3", "ls", "--profile", "testuser"]
+env = { "AWS_CONFIG_FILE" = "./aws_config", "AWS_SHARED_CREDENTIALS_FILE" = "/dev/null" }
+
+[expected]
+exit_code = 255
+
+[expected.stdout]
+mode = "exact"
+value = ""
+
+[expected.stderr]
+mode = "exact"
+value = "\nThe config profile (testuser) could not be found\n"
+
+[source]
+refs = ["aws/aws-cli#370", "aws/aws-cli#7711"]
+cli_ref = "awscli/botocore/configloader.py:214"
+rationale = "#370 documents that config file requires 'profile ' prefix for named profiles; #7711 clarifies the INI format rules"

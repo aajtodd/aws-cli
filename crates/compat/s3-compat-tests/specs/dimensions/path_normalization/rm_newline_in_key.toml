@@ -1,0 +1,34 @@
+[test]
+name = "rm_newline_in_key"
+description = "rm correctly deletes a key containing literal newline characters"
+tags = ["rm", "path_normalization"]
+target = "prod_only"
+
+[[setup.buckets]]
+name = "{bucket}"
+
+[[setup.objects]]
+key = "key\nwith\nnewlines.txt"
+content = "newline_content"
+
+[command]
+args = ["s3", "rm", "s3://{bucket}/key\nwith\nnewlines.txt"]
+
+[expected]
+exit_code = 0
+
+[expected.stdout]
+mode = "exact"
+value = "delete: s3://{bucket}/key\nwith\nnewlines.txt\n"
+
+[expected.stderr]
+mode = "exact"
+value = ""
+
+[[expected.objects]]
+key = "key\nwith\nnewlines.txt"
+exists = false
+
+[source]
+refs = ["aws/aws-cli#675"]
+rationale = "#675 reported rm failure with newline-containing keys; v2 correctly handles newlines in the key through the list/delete cycle."

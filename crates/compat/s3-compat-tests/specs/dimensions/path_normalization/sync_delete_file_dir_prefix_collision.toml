@@ -1,0 +1,45 @@
+[test]
+name = "sync_delete_file_dir_prefix_collision"
+description = "sync --delete correctly deletes object 'foo' without deleting 'foo/bar.txt' when source has only the directory"
+tags = ["sync", "path_normalization"]
+
+[[setup.buckets]]
+name = "{bucket}"
+
+[[setup.objects]]
+key = "foo"
+content = "file_foo"
+
+[[setup.objects]]
+key = "foo/bar.txt"
+content = "dir_content"
+
+[[setup.files]]
+path = "src/foo/bar.txt"
+content = "dir_content"
+
+[command]
+args = ["s3", "sync", "src/", "s3://{bucket}/", "--delete", "--size-only"]
+
+[expected]
+exit_code = 0
+
+[expected.stdout]
+mode = "exact"
+value = "delete: s3://{bucket}/foo\n"
+
+[expected.stderr]
+mode = "exact"
+value = ""
+
+[[expected.objects]]
+key = "foo"
+exists = false
+
+[[expected.objects]]
+key = "foo/bar.txt"
+content = "dir_content"
+
+[source]
+refs = ["aws/aws-cli#405", "aws/aws-cli#431", "aws/aws-cli#440"]
+rationale = "#405, #431, #440 reported sync --delete incorrectly handling file/directory name prefix collisions; v2 correctly distinguishes 'foo' (file) from 'foo/' (prefix) and only deletes the file not matched in source."

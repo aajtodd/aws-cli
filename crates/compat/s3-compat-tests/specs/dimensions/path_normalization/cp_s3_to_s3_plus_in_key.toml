@@ -1,0 +1,38 @@
+[test]
+name = "cp_s3_to_s3_plus_in_key"
+description = "cp s3→s3 correctly encodes + in CopySource; key with + copies without corruption"
+tags = ["cp", "path_normalization"]
+target = "prod_only"
+
+[[setup.buckets]]
+name = "{bucket}"
+
+[[setup.objects]]
+key = "src+file.txt"
+content = "plus_content"
+
+[command]
+args = ["s3", "cp", "s3://{bucket}/src+file.txt", "s3://{bucket}/dst+file.txt"]
+
+[expected]
+exit_code = 0
+
+[expected.stdout]
+mode = "regex"
+value = [
+    "^Completed 12 Bytes/12 Bytes \\([^)]+\\) with 1 file\\(s\\) remaining$",
+    "^copy: s3://\\{bucket\\}/src\\+file\\.txt to s3://\\{bucket\\}/dst\\+file\\.txt$",
+]
+
+[expected.stderr]
+mode = "exact"
+value = ""
+
+[[expected.objects]]
+key = "dst+file.txt"
+content = "plus_content"
+
+[source]
+refs = ["aws/aws-cli#614", "aws/aws-cli#1730"]
+cli_ref = "awscli/customizations/s3/subcommands.py:1935"
+rationale = "#614 reported multipart copy failure with + in key; #1730 switched to dictionary-form CopySource to fix encoding. v2 correctly copies keys with + via dictionary-form CopySource."

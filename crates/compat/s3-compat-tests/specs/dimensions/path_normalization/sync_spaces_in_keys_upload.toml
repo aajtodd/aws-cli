@@ -1,0 +1,46 @@
+[test]
+name = "sync_spaces_in_keys_upload"
+description = "sync local→s3 correctly uploads files with spaces and quotes in names; resulting keys use literal spaces"
+tags = ["sync", "path_normalization"]
+
+[[setup.buckets]]
+name = "{bucket}"
+
+[[setup.files]]
+path = "src/my file.txt"
+content = "space_content"
+
+[[setup.files]]
+path = "src/it's here.txt"
+content = "quote_content"
+
+[command]
+args = ["s3", "sync", "src/", "s3://{bucket}/"]
+
+[expected]
+exit_code = 0
+
+[expected.stdout]
+mode = "regex"
+value = [
+    "^Completed 26 Bytes/26 Bytes \\([^)]+\\) with \\d+ file\\(s\\) remaining$",
+    "^upload: src/it's here\\.txt to s3://\\{bucket\\}/it's here\\.txt$",
+    "^upload: src/my file\\.txt to s3://\\{bucket\\}/my file\\.txt$",
+]
+
+[expected.stderr]
+mode = "exact"
+value = ""
+
+[[expected.objects]]
+key = "my file.txt"
+content = "space_content"
+
+[[expected.objects]]
+key = "it's here.txt"
+content = "quote_content"
+
+[source]
+refs = ["aws/aws-cli#718", "aws/aws-cli#2588"]
+cli_ref = "awscli/customizations/s3/filegenerator.py:367"
+rationale = "#718 and #2588 reported space/quote handling bugs in v1 sync comparison; v2 correctly uploads and compares files with spaces and quotes, so this spec locks the correct behavior."

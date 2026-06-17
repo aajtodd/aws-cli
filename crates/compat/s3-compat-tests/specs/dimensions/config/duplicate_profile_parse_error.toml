@@ -1,0 +1,28 @@
+[test]
+name = "duplicate_profile_parse_error"
+description = "Duplicate profile sections in config file produce 'Unable to parse config file' error"
+tags = ["ls", "config"]
+
+[[setup.files]]
+path = "aws_config"
+content = "[profile foo]\nregion = us-east-1\n\n[profile foo]\nregion = us-east-2\n"
+
+[command]
+args = ["s3", "ls", "--profile", "foo"]
+env = { "AWS_CONFIG_FILE" = "./aws_config", "AWS_SHARED_CREDENTIALS_FILE" = "/dev/null" }
+
+[expected]
+exit_code = 255
+
+[expected.stdout]
+mode = "exact"
+value = ""
+
+[expected.stderr]
+mode = "regex"
+value = ["^Unable to parse config file: .+aws_config$"]
+
+[source]
+refs = ["aws/aws-cli#9261"]
+cli_ref = "awscli/botocore/exceptions.py:300"
+rationale = "#9261 requests a better error message; v2 still produces the generic 'Unable to parse config file' for duplicate sections"

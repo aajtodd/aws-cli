@@ -1,0 +1,37 @@
+[test]
+name = "ls_trailing_slash_prefix_semantics"
+description = "ls without trailing slash on prefix lists all objects/prefixes sharing that string prefix — both 'logs/' directory and 'logs_summary.txt' appear because both start with 'logs'"
+tags = ["ls", "path_normalization"]
+
+[[setup.buckets]]
+name = "{bucket}"
+
+[[setup.objects]]
+key = "logs/2024/jan.txt"
+content = "j"
+
+[[setup.objects]]
+key = "logs_summary.txt"
+content = "s"
+
+[command]
+args = ["s3", "ls", "s3://{bucket}/logs"]
+
+[expected]
+exit_code = 0
+
+[expected.stdout]
+mode = "regex"
+value = [
+    "^\\s+PRE logs/$",
+    "^\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}\\s+1 logs_summary\\.txt$",
+]
+
+[expected.stderr]
+mode = "exact"
+value = ""
+
+[source]
+refs = ["aws/aws-cli#9701", "aws/aws-cli#557"]
+cli_ref = "awscli/customizations/s3/subcommands.py:839"
+rationale = "#9701 documents that ls requires trailing slash to list subdirectory contents; #557 established that trailing slash is not required to identify a prefix. The behavior is: prefix without trailing slash matches all objects/prefixes sharing that string prefix."

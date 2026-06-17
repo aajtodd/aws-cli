@@ -1,0 +1,26 @@
+[test]
+name = "ls_object_lambda_arn_rejected"
+description = "ls rejects S3 Object Lambda access point ARNs with a specific error directing users to s3api"
+tags = ["ls", "path_normalization"]
+
+[[setup.buckets]]
+name = "{bucket}"
+
+[command]
+args = ["s3", "ls", "s3://arn:aws:s3-object-lambda:us-east-2:123456789012:accesspoint/my-olap"]
+
+[expected]
+exit_code = 252
+
+[expected.stdout]
+mode = "exact"
+value = ""
+
+[expected.stderr]
+mode = "exact"
+value = "\ns3 commands do not support S3 Object Lambda resources. Use s3api commands instead.\n"
+
+[source]
+refs = ["aws/aws-cli#7350", "aws/aws-cli#7259"]
+cli_ref = "awscli/customizations/s3/utils.py:204"
+rationale = "#7350 requests Object Lambda support in s3 commands; v2 rejects with a specific error directing users to s3api. #7259 documents the same for presign."

@@ -1,0 +1,46 @@
+[test]
+name = "cp_recursive_no_source_dir_name"
+description = "cp --recursive copies directory contents without preserving source directory name"
+tags = ["cp", "path_normalization", "recursive"]
+
+[[setup.buckets]]
+name = "{bucket}"
+
+[[setup.files]]
+path = "mydir/alpha.txt"
+content = "aaa"
+
+[[setup.files]]
+path = "mydir/beta.txt"
+content = "bbb"
+
+[command]
+args = ["s3", "cp", "mydir", "s3://{bucket}/dest", "--recursive"]
+
+[expected]
+exit_code = 0
+
+[expected.stdout]
+mode = "regex"
+value = [
+    "^Completed 6 Bytes/6 Bytes \\([^)]+\\) with 1 file\\(s\\) remaining$",
+    "^upload: mydir/alpha\\.txt to s3://\\{bucket\\}/dest/alpha\\.txt$",
+    "^upload: mydir/beta\\.txt to s3://\\{bucket\\}/dest/beta\\.txt$",
+]
+
+[expected.stderr]
+mode = "exact"
+value = ""
+
+[[expected.objects]]
+key = "dest/alpha.txt"
+content = "aaa"
+
+[[expected.objects]]
+key = "dest/beta.txt"
+content = "bbb"
+
+[source]
+refs = ["aws/aws-cli#2069"]
+cli_ref = "awscli/customizations/s3/subcommands.py:1935"
+rationale = "#2069 requests preserving source dir name; v2 still copies contents only (dir contents at dest prefix, not under dir/ prefix), so this spec locks the content-only behavior."

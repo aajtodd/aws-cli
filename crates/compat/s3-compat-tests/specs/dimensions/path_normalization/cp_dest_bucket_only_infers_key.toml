@@ -1,0 +1,37 @@
+[test]
+name = "cp_dest_bucket_only_infers_key"
+description = "cp to s3://bucket (no key in destination) infers the object key from the source filename"
+tags = ["cp", "path_normalization"]
+
+[[setup.buckets]]
+name = "{bucket}"
+
+[[setup.files]]
+path = "myfile.txt"
+content = "payload"
+
+[command]
+args = ["s3", "cp", "myfile.txt", "s3://{bucket}"]
+
+[expected]
+exit_code = 0
+
+[expected.stdout]
+mode = "regex"
+value = [
+    "^Completed 7 Bytes/7 Bytes \\([^)]+\\) with 1 file\\(s\\) remaining$",
+    "^upload: \\./myfile\\.txt to s3://\\{bucket\\}/myfile\\.txt$",
+]
+
+[expected.stderr]
+mode = "exact"
+value = ""
+
+[[expected.objects]]
+key = "myfile.txt"
+content = "payload"
+
+[source]
+refs = ["aws/aws-cli#552"]
+cli_ref = "awscli/customizations/s3/subcommands.py:1931"
+rationale = "#552 reported confusing errors when dest has no key; v2's _normalize_s3_trailing_slash appends '/' to bare s3://bucket, causing s3_format to set use_src_name=True and infer the key from the source filename."

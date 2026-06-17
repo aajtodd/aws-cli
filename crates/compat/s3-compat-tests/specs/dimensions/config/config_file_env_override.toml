@@ -1,0 +1,28 @@
+[test]
+name = "config_file_env_override"
+description = "AWS_CONFIG_FILE overrides the default ~/.aws/config location"
+tags = ["ls", "config"]
+
+[[setup.files]]
+path = "custom_config"
+content = "[profile customprofile]\nregion = us-east-2\n"
+
+[command]
+args = ["s3", "ls", "--profile", "customprofile"]
+env = { "AWS_CONFIG_FILE" = "./custom_config", "AWS_SHARED_CREDENTIALS_FILE" = "/dev/null" }
+
+[expected]
+exit_code = 253
+
+[expected.stdout]
+mode = "exact"
+value = ""
+
+[expected.stderr]
+mode = "exact"
+value = "\nUnable to locate credentials. You can configure credentials by running \"aws configure\".\n"
+
+[source]
+refs = ["aws/aws-cli#269", "aws/aws-cli#305"]
+cli_ref = "awscli/botocore/configprovider.py:56"
+rationale = "#269 and #305 established ~/.aws/config as default; AWS_CONFIG_FILE overrides it — if the custom file is read, profile is found (exit 253 for missing creds, not 255 for missing profile)"

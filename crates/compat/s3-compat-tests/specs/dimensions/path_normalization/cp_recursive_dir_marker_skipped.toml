@@ -1,0 +1,41 @@
+[test]
+name = "cp_recursive_dir_marker_skipped"
+description = "cp --recursive download skips zero-byte keys ending in / (directory markers)"
+tags = ["cp", "path_normalization", "recursive"]
+
+[[setup.buckets]]
+name = "{bucket}"
+
+[[setup.objects]]
+key = "folder/"
+content = ""
+
+[[setup.objects]]
+key = "folder/real.txt"
+content = "real_content"
+
+[command]
+args = ["s3", "cp", "s3://{bucket}/", "dst/", "--recursive"]
+
+[expected]
+exit_code = 0
+
+[expected.stdout]
+mode = "regex"
+value = [
+    "^Completed 12 Bytes/12 Bytes \\([^)]+\\) with 1 file\\(s\\) remaining$",
+    "^download: s3://\\{bucket\\}/folder/real\\.txt to dst/folder/real\\.txt$",
+]
+
+[expected.stderr]
+mode = "exact"
+value = ""
+
+[[expected.files]]
+path = "dst/folder/real.txt"
+content = "real_content"
+
+[source]
+refs = ["aws/aws-cli#2213", "aws/aws-cli#6435"]
+cli_ref = "awscli/customizations/s3/filegenerator.py:367"
+rationale = "#2213 and #6435 report failures with dir-marker keys; v2 filters out zero-byte keys ending in / for non-delete operations (filegenerator.py:367), so the download succeeds by skipping them."

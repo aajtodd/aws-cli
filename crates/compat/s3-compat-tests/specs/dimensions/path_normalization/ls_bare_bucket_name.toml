@@ -1,0 +1,30 @@
+[test]
+name = "ls_bare_bucket_name"
+description = "ls accepts a bare bucket name without s3:// prefix and lists its contents; the prefix is optional for ls only"
+tags = ["ls", "path_normalization"]
+
+[[setup.buckets]]
+name = "{bucket}"
+
+[[setup.objects]]
+key = "hello.txt"
+content = "hello"
+
+[command]
+args = ["s3", "ls", "{bucket}/"]
+
+[expected]
+exit_code = 0
+
+[expected.stdout]
+mode = "regex"
+value = ["^\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}\\s+5 hello\\.txt$"]
+
+[expected.stderr]
+mode = "exact"
+value = ""
+
+[source]
+refs = ["aws/aws-cli#626"]
+cli_ref = "awscli/customizations/s3/subcommands.py:799"
+rationale = "#626 added bare bucket name support for ls in v1; v2 retains this behavior. The code strips s3:// if present, otherwise uses the path directly as bucket/key."
