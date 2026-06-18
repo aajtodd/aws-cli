@@ -1,0 +1,34 @@
+[test]
+name = "sync_size_only_same_size_skip"
+description = "sync --size-only skips files when sizes match, regardless of timestamps"
+tags = ["sync", "sync_strategy"]
+
+[[setup.buckets]]
+name = "{bucket}"
+
+[[setup.objects]]
+key = "file.txt"
+content = "hello world"
+
+[[setup.files]]
+path = "src/file.txt"
+content = "hello world"
+
+[command]
+args = ["s3", "sync", "src/", "s3://{bucket}/", "--size-only"]
+
+[expected]
+exit_code = 0
+
+[expected.stdout]
+mode = "exact"
+value = ""
+
+[expected.stderr]
+mode = "exact"
+value = ""
+
+[source]
+refs = ["aws/aws-cli#473", "aws/aws-cli#719"]
+cli_ref = "awscli/customizations/s3/syncstrategy/sizeonly.py:30"
+rationale = "#473 requests --size-only; #719 implements it. SizeOnlySync.determine_should_sync returns False when sizes match, ignoring timestamps entirely."

@@ -1,7 +1,12 @@
 [test]
 name = "yaml_config"
-description = "cp uploads .yaml file — Python does not infer content_type on macOS"
+description = "cp uploads .yaml file — Python does not infer content_type; S3 applies binary/octet-stream default"
 tags = ["cp", "upload", "content-type"]
+target = "prod_only"
+
+[source]
+cli_ref = "awscli/customizations/s3/utils.py:340"
+rationale = "Python mimetypes.guess_type() returns None for .yaml on macOS — no ContentType sent. S3 applies binary/octet-stream server-side."
 
 [[setup.buckets]]
 name = "{bucket}"
@@ -18,7 +23,7 @@ exit_code = 0
 
 [[expected.objects]]
 key = "config.yaml"
-exists = true
+content_type = "binary/octet-stream"
 
 [deviation]
 behavior = "improved_mime_coverage"

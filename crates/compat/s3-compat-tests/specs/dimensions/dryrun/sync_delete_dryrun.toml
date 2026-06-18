@@ -1,0 +1,53 @@
+[test]
+name = "sync_delete_dryrun"
+description = "sync --delete --dryrun prints (dryrun) delete: for objects not in local source"
+tags = ["sync", "dryrun", "delete"]
+
+[[setup.buckets]]
+name = "{bucket}"
+
+# S3 has two objects
+[[setup.objects]]
+key = "keep.txt"
+content = "keeper"
+
+[[setup.objects]]
+key = "remove.txt"
+content = "goner"
+
+# Local source has only keep.txt
+[[setup.files]]
+path = "src/keep.txt"
+content = "keeper"
+# Older than the S3 object's LastModified (mock seed-time or prod "now"), so the
+# same-size upload comparison SKIPS keep.txt — isolating the (dryrun) delete: output.
+last_modified = "2020-01-01T00:00:00Z"
+
+[command]
+args = ["s3", "sync", "src/", "s3://{bucket}/", "--delete", "--dryrun"]
+
+[expected]
+exit_code = 0
+
+[expected.stdout]
+mode = "exact"
+value = "(dryrun) delete: s3://{bucket}/remove.txt\n"
+
+[expected.stderr]
+mode = "exact"
+value = ""
+
+[[expected.objects]]
+key = "keep.txt"
+exists = true
+content = "keeper"
+
+[[expected.objects]]
+key = "remove.txt"
+exists = true
+content = "goner"
+
+[source]
+refs = ["aws/aws-cli#6000"]
+cli_ref = "awscli/customizations/s3/s3handler.py:275"
+rationale = "#6000 documents that sync --delete --dryrun deletions are scoped to the synced prefix; the (dryrun) delete: line confirms the src-only format"

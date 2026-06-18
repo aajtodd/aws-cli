@@ -1,0 +1,35 @@
+[test]
+name = "ls_cli_timestamp_format_ignored"
+description = "s3 ls ignores cli_timestamp_format; its timestamp is always YYYY-MM-DD HH:MM:SS in local tz"
+tags = ["ls", "timezone", "config"]
+target = "mock_only"
+
+[[setup.objects]]
+key = "file1.txt"
+content = "hello"
+last_modified = "2024-06-15T14:30:00Z"
+
+[[setup.files]]
+path = "custom_config"
+content = "[default]\nregion = us-east-1\ncli_timestamp_format = wire\n"
+
+[command]
+args = ["s3", "ls", "s3://{bucket}/"]
+env = { AWS_CONFIG_FILE = "./custom_config" }
+
+[expected]
+exit_code = 0
+
+# cli_timestamp_format=wire would change output for s3api commands, but s3 ls
+# hardcodes its own format via _make_last_mod_str — output is identical.
+[expected.stdout]
+mode = "exact"
+value = "2024-06-15 14:30:00          5 file1.txt\n"
+
+[expected.stderr]
+mode = "exact"
+value = ""
+
+[source]
+cli_ref = "awscli/customizations/s3/subcommands.py:926"
+rationale = "_make_last_mod_str formats independently; cli_timestamp_format (awscli/formatter.py) is never consulted by s3 ls. #2397 added the config option for s3api/other services; it does not reach s3 high-level commands."

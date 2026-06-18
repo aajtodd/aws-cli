@@ -1,0 +1,51 @@
+[test]
+name = "sync_delete_download_removes_local"
+description = "sync --delete S3→local removes local files not present in S3 source"
+tags = ["sync", "sync_strategy"]
+
+[[setup.buckets]]
+name = "{bucket}"
+
+[[setup.objects]]
+key = "keep.txt"
+content = "from s3"
+
+[[setup.files]]
+path = "dst/keep.txt"
+content = "from s3"
+# Older than the S3 object's LastModified (S3 newer) so the same-size download
+# comparison SKIPS keep.txt — isolating the --delete focus (only localonly.txt deleted).
+last_modified = "2020-01-01T00:00:00Z"
+
+[[setup.files]]
+path = "dst/localonly.txt"
+content = "local only"
+
+[command]
+args = ["s3", "sync", "s3://{bucket}/", "dst/", "--delete"]
+
+[expected]
+exit_code = 0
+
+[expected.stdout]
+mode = "regex"
+value = [
+    "^delete: dst/localonly\\.txt$",
+]
+
+[expected.stderr]
+mode = "exact"
+value = ""
+
+[[expected.files]]
+path = "dst/keep.txt"
+content = "from s3"
+
+[[expected.files]]
+path = "dst/localonly.txt"
+exists = false
+
+[source]
+refs = ["aws/aws-cli#1361", "aws/aws-cli#2234"]
+cli_ref = "awscli/customizations/s3/syncstrategy/delete.py:36"
+rationale = "#1361 documents --delete removing local files absent from S3 source; #2234 implements local file deletion via synchronous os.remove() in the main thread."

@@ -1,0 +1,37 @@
+[test]
+name = "sync_download_skip_s3_newer"
+description = "sync S3→local skips same-sized files when S3 LastModified is newer than local mtime (default download direction: skip when dest_time - src_time ≤ 0)"
+tags = ["sync", "sync_strategy"]
+
+[[setup.buckets]]
+name = "{bucket}"
+
+[[setup.objects]]
+key = "file.txt"
+content = "hello world"
+
+[[setup.files]]
+path = "dst/file.txt"
+content = "hello world"
+# Pinned older than the S3 object's LastModified (S3 newer), so the same-size
+# download comparison deterministically SKIPS (local not newer than S3).
+last_modified = "2020-01-01T00:00:00Z"
+
+[command]
+args = ["s3", "sync", "s3://{bucket}/", "dst/"]
+
+[expected]
+exit_code = 0
+
+[expected.stdout]
+mode = "exact"
+value = ""
+
+[expected.stderr]
+mode = "exact"
+value = ""
+
+[source]
+refs = ["aws/aws-cli#648", "aws/aws-cli#6323"]
+cli_ref = "awscli/customizations/s3/syncstrategy/base.py:222"
+rationale = "#648 reports unexpected skips; #6323 documents the download comparison. For download (line 222), compare_time returns True (skip) when total_seconds(delta) <= 0, where delta = dest_time(local) - src_time(S3). When S3 LastModified is newer, delta < 0 → skip. Freshly-seeded S3 objects have LastModified newer than the harness-created local file → skip fires."

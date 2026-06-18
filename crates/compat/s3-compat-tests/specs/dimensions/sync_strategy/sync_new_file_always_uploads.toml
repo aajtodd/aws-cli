@@ -1,0 +1,48 @@
+[test]
+name = "sync_new_file_always_uploads"
+description = "sync always uploads a file that does not exist at the destination, regardless of strategy flags"
+tags = ["sync", "sync_strategy"]
+
+[[setup.buckets]]
+name = "{bucket}"
+
+[[setup.objects]]
+key = "existing.txt"
+content = "already here"
+
+[[setup.files]]
+path = "src/existing.txt"
+content = "already here"
+
+[[setup.files]]
+path = "src/newfile.txt"
+content = "brand new"
+
+[command]
+args = ["s3", "sync", "src/", "s3://{bucket}/", "--size-only"]
+
+[expected]
+exit_code = 0
+
+[expected.stdout]
+mode = "regex"
+value = [
+    "^Completed 9 Bytes/9 Bytes \\([^)]+\\) with 1 file\\(s\\) remaining$",
+    "^upload: src/newfile\\.txt to s3://\\{bucket\\}/newfile\\.txt$",
+]
+
+[expected.stderr]
+mode = "exact"
+value = ""
+
+[[expected.objects]]
+key = "existing.txt"
+content = "already here"
+
+[[expected.objects]]
+key = "newfile.txt"
+content = "brand new"
+
+[source]
+cli_ref = "awscli/customizations/s3/syncstrategy/base.py:260"
+rationale = "MissingFileSync (file_not_at_dest strategy, line 260) always returns True — a file absent from destination is always synced regardless of --size-only or other flags."

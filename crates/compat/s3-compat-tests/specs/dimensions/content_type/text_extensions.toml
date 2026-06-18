@@ -3,6 +3,11 @@ name = "text_extensions"
 description = "cp infers text/html content type from .html extension"
 tags = ["cp", "upload", "content-type"]
 
+[source]
+cli_ref = "awscli/customizations/s3/utils.py:340"
+refs = ["aws/aws-cli#289"]
+rationale = "#289 introduced auto-detection of MIME type from file extension on upload via mimetypes.guess_type()."
+
 [[setup.buckets]]
 name = "{bucket}"
 

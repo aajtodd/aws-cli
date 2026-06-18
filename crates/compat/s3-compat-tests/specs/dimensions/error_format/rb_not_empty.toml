@@ -1,0 +1,23 @@
+[test]
+name = "rb_not_empty"
+description = "rb on a non-empty bucket renders 'remove_bucket failed: {path} {exception}' with BucketNotEmpty on stderr, exit 1"
+tags = ["rb", "error_format"]
+target = "prod_only"
+
+[command]
+args = ["s3", "rb", "s3://s3-compat-test-bucket-for-spec-authoring"]
+
+[expected]
+exit_code = 1
+
+[expected.stdout]
+mode = "exact"
+value = ""
+
+[expected.stderr]
+mode = "exact"
+value = "remove_bucket failed: s3://s3-compat-test-bucket-for-spec-authoring An error occurred (BucketNotEmpty) when calling the DeleteBucket operation: The bucket you tried to delete is not empty\n"
+
+[source]
+cli_ref = "awscli/customizations/s3/subcommands.py:1325"
+rationale = "RbCommand has its own try/except printing 'remove_bucket failed: {path} {exception}' — same structural FAILURE_FORMAT as mb's handler; BucketNotEmpty is the server-side rejection when objects remain."

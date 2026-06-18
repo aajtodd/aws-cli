@@ -2,6 +2,12 @@
 name = "recursive_mixed"
 description = "cp --recursive infers content_type per file from extension"
 tags = ["cp", "upload", "content-type", "recursive"]
+target = "prod_only"
+
+[source]
+cli_ref = "awscli/customizations/s3/s3handler.py:374"
+refs = ["aws/aws-cli#289"]
+rationale = "ProvideUploadContentTypeSubscriber is appended per-file in _add_additional_subscribers, so each file in a recursive upload gets its own MIME inference."
 
 [[setup.buckets]]
 name = "{bucket}"
@@ -42,4 +48,4 @@ content_type = "application/json"
 
 [[expected.objects]]
 key = "noext"
-exists = true
+content_type = "binary/octet-stream"

@@ -1,7 +1,13 @@
 [test]
 name = "no_guess_mime_type"
-description = "cp with --no-guess-mime-type skips inference — no content_type sent"
+description = "cp with --no-guess-mime-type skips inference — no content_type sent; S3 applies binary/octet-stream default"
 tags = ["cp", "upload", "content-type"]
+target = "prod_only"
+
+[source]
+cli_ref = "awscli/customizations/s3/s3handler.py:307"
+refs = ["aws/aws-cli#289"]
+rationale = "#289 introduced --no-guess-mime-type. _should_inject_content_type() returns false when guess_mime_type is disabled, so no ContentType is sent; S3 applies binary/octet-stream."
 
 [[setup.buckets]]
 name = "{bucket}"
@@ -18,4 +24,4 @@ exit_code = 0
 
 [[expected.objects]]
 key = "notes.txt"
-content = "some plain text"
+content_type = "binary/octet-stream"

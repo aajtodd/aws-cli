@@ -1,0 +1,47 @@
+[test]
+name = "sync_s3_to_s3_dryrun"
+description = "sync --dryrun S3→S3 prints (dryrun) copy: lines and does not copy"
+tags = ["sync", "dryrun", "s3-to-s3"]
+
+[[setup.buckets]]
+name = "{bucket}"
+
+[[setup.buckets]]
+name = "{bucket-dest}"
+
+[[setup.objects]]
+key = "src/a.txt"
+content = "aaa"
+
+[[setup.objects]]
+key = "src/b.txt"
+content = "bbb"
+
+[command]
+args = ["s3", "sync", "s3://{bucket}/src/", "s3://{bucket-dest}/dst/", "--dryrun"]
+
+[expected]
+exit_code = 0
+
+[expected.stdout]
+mode = "exact"
+value = "(dryrun) copy: s3://{bucket}/src/a.txt to s3://{bucket-dest}/dst/a.txt\n(dryrun) copy: s3://{bucket}/src/b.txt to s3://{bucket-dest}/dst/b.txt\n"
+
+[expected.stderr]
+mode = "exact"
+value = ""
+
+[[expected.objects]]
+bucket = "{bucket-dest}"
+key = "dst/a.txt"
+exists = false
+
+[[expected.objects]]
+bucket = "{bucket-dest}"
+key = "dst/b.txt"
+exists = false
+
+[source]
+refs = ["aws/aws-cli#6863"]
+cli_ref = "awscli/customizations/s3/s3handler.py:248"
+rationale = "#6863 requests dryrun include download estimates; v2 sync --dryrun to S3 uses transfer_type 'copy' and no CopyObject is issued"

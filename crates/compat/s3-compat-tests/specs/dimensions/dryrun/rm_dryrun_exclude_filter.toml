@@ -1,0 +1,53 @@
+[test]
+name = "rm_dryrun_exclude_filter"
+description = "rm --recursive --dryrun --exclude omits excluded keys from dryrun output"
+tags = ["rm", "dryrun", "filters"]
+
+[[setup.buckets]]
+name = "{bucket}"
+
+[[setup.objects]]
+key = "keep.txt"
+content = "kept"
+
+[[setup.objects]]
+key = "remove.txt"
+content = "gone"
+
+[[setup.objects]]
+key = "sub/also_remove.txt"
+content = "also gone"
+
+[command]
+args = ["s3", "rm", "s3://{bucket}/", "--recursive", "--dryrun", "--exclude", "keep*"]
+
+[expected]
+exit_code = 0
+
+[expected.stdout]
+mode = "exact"
+value = "(dryrun) delete: s3://{bucket}/remove.txt\n(dryrun) delete: s3://{bucket}/sub/also_remove.txt\n"
+
+[expected.stderr]
+mode = "exact"
+value = ""
+
+[[expected.objects]]
+key = "keep.txt"
+exists = true
+content = "kept"
+
+[[expected.objects]]
+key = "remove.txt"
+exists = true
+content = "gone"
+
+[[expected.objects]]
+key = "sub/also_remove.txt"
+exists = true
+content = "also gone"
+
+[source]
+refs = ["aws/aws-cli#1663"]
+cli_ref = "awscli/customizations/s3/s3handler.py:243"
+rationale = "#1663 reports --exclude with full bucket prefix fails; v2 applies relative-path filters before the dryrun path — excluded keys do not appear in dryrun output"

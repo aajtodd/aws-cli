@@ -1,0 +1,45 @@
+[test]
+name = "sync_no_delete_preserves_extras"
+description = "sync without --delete never removes destination files absent from source"
+tags = ["sync", "sync_strategy"]
+
+[[setup.buckets]]
+name = "{bucket}"
+
+[[setup.objects]]
+key = "extra.txt"
+content = "dest only"
+
+[[setup.files]]
+path = "src/new.txt"
+content = "source only"
+
+[command]
+args = ["s3", "sync", "src/", "s3://{bucket}/"]
+
+[expected]
+exit_code = 0
+
+[expected.stdout]
+mode = "regex"
+value = [
+    "^Completed 11 Bytes/11 Bytes \\([^)]+\\) with 1 file\\(s\\) remaining$",
+    "^upload: src/new\\.txt to s3://\\{bucket\\}/new\\.txt$",
+]
+
+[expected.stderr]
+mode = "exact"
+value = ""
+
+[[expected.objects]]
+key = "extra.txt"
+content = "dest only"
+
+[[expected.objects]]
+key = "new.txt"
+content = "source only"
+
+[source]
+refs = ["aws/aws-cli#3207"]
+cli_ref = "awscli/customizations/s3/syncstrategy/base.py:252"
+rationale = "#3207 confirms sync without --delete does NOT remove destination-only files. The default file_not_at_src strategy is NeverSync (line 252) which always returns False."

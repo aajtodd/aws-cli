@@ -1,0 +1,36 @@
+[test]
+name = "sync_skip_same_size_upload"
+description = "sync skips upload when dest object has same size and dest LastModified is newer than local mtime"
+tags = ["sync", "sync_strategy"]
+
+[[setup.buckets]]
+name = "{bucket}"
+
+[[setup.objects]]
+key = "file.txt"
+content = "hello world"
+
+[[setup.files]]
+path = "src/file.txt"
+content = "hello world"
+# Pinned older than the S3 object's LastModified (mock seed-time or prod "now"),
+# so the same-size upload comparison deterministically SKIPS (local not newer).
+last_modified = "2020-01-01T00:00:00Z"
+
+[command]
+args = ["s3", "sync", "src/", "s3://{bucket}/"]
+
+[expected]
+exit_code = 0
+
+[expected.stdout]
+mode = "exact"
+value = ""
+
+[expected.stderr]
+mode = "exact"
+value = ""
+
+[source]
+cli_ref = "awscli/customizations/s3/syncstrategy/base.py:231"
+rationale = "SizeAndLastModifiedSync.determine_should_sync returns False (no sync) when size matches and compare_time returns True. For upload direction (line 213), compare_time returns True when delta (dest_time - src_time) >= 0, meaning S3 (dest) LastModified is newer than local mtime."

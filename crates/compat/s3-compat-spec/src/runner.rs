@@ -873,6 +873,35 @@ pub fn create_local_files(
         std::fs::write(&path, &content)
             .map_err(|e| Error::new(ErrorKind::LocalFile, format!("{}: {e}", path.display())))?;
 
+        if let Some(s) = &file.last_modified {
+            let dt = aws_smithy_types::DateTime::from_str(
+                s,
+                aws_smithy_types::date_time::Format::DateTime,
+            )
+            .map_err(|e| {
+                Error::new(
+                    ErrorKind::InvalidSpec,
+                    format!("invalid last_modified '{s}': {e}"),
+                )
+            })?;
+            let mtime = SystemTime::try_from(dt).map_err(|e| {
+                Error::new(
+                    ErrorKind::InvalidSpec,
+                    format!("last_modified '{s}' out of range: {e}"),
+                )
+            })?;
+            std::fs::OpenOptions::new()
+                .write(true)
+                .open(&path)
+                .and_then(|f| f.set_modified(mtime))
+                .map_err(|e| {
+                    Error::new(
+                        ErrorKind::LocalFile,
+                        format!("set mtime {}: {e}", path.display()),
+                    )
+                })?;
+        }
+
         #[cfg(unix)]
         if let Some(perms) = &file.permissions {
             use std::os::unix::fs::PermissionsExt;
@@ -1262,6 +1291,7 @@ mod tests {
             symlink_to: None,
             permissions: None,
             permissions_windows: None,
+            last_modified: None,
             platform: vec![],
         }];
         create_local_files(&files, dir.path(), &HashMap::new()).unwrap();
@@ -1281,6 +1311,7 @@ mod tests {
             symlink_to: None,
             permissions: None,
             permissions_windows: None,
+            last_modified: None,
             platform: vec![],
         }];
         create_local_files(&files, dir.path(), &HashMap::new()).unwrap();
@@ -1298,6 +1329,7 @@ mod tests {
             symlink_to: None,
             permissions: None,
             permissions_windows: None,
+            last_modified: None,
             platform: vec![],
         }];
         create_local_files(&files, dir.path(), &HashMap::new()).unwrap();
@@ -1320,6 +1352,7 @@ mod tests {
             symlink_to: Some("target.txt".into()),
             permissions: None,
             permissions_windows: None,
+            last_modified: None,
             platform: vec![],
         }];
         create_local_files(&files, dir.path(), &HashMap::new()).unwrap();
@@ -1510,6 +1543,7 @@ exit_code = 0
             symlink_to: None,
             permissions: None,
             permissions_windows: None,
+            last_modified: None,
             platform: vec!["nonexistent_os".into()],
         }];
         create_local_files(&files, dir.path(), &HashMap::new()).unwrap();
@@ -1529,6 +1563,7 @@ exit_code = 0
             symlink_to: None,
             permissions: Some("0444".into()),
             permissions_windows: None,
+            last_modified: None,
             platform: vec![],
         }];
         create_local_files(&files, dir.path(), &HashMap::new()).unwrap();

@@ -3,6 +3,11 @@ name = "wasm_binary"
 description = "cp infers application/wasm for .wasm files"
 tags = ["cp", "upload", "content-type"]
 
+[source]
+cli_ref = "awscli/customizations/s3/utils.py:340"
+refs = ["aws/aws-cli#5743"]
+rationale = "#5743 reports .wasm returns binary/octet-stream on some platforms. On this baseline (Python 3.12/macOS), mimetypes.guess_type returns application/wasm."
+
 [[setup.buckets]]
 name = "{bucket}"
 

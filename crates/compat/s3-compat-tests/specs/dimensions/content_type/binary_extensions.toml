@@ -3,6 +3,11 @@ name = "binary_extensions"
 description = "cp infers image/png content type from .png extension"
 tags = ["cp", "upload", "content-type"]
 
+[source]
+cli_ref = "awscli/customizations/s3/utils.py:340"
+refs = ["aws/aws-cli#289"]
+rationale = "#289 introduced auto-detection; .png maps to image/png via Python mimetypes."
+
 [[setup.buckets]]
 name = "{bucket}"
 

@@ -1,0 +1,44 @@
+[test]
+name = "sync_exact_timestamps_download_redownloads"
+description = "sync --exact-timestamps forces re-download when S3 LastModified differs from local mtime (any delta ≠ 0)"
+tags = ["sync", "sync_strategy"]
+
+[[setup.buckets]]
+name = "{bucket}"
+
+[[setup.objects]]
+key = "file.txt"
+content = "hello world"
+
+[[setup.files]]
+path = "dst/file.txt"
+content = "hello world"
+# Pinned to a fixed time that never equals the S3 object's LastModified, so
+# --exact-timestamps (download: skip iff delta == 0) deterministically re-downloads.
+last_modified = "2020-01-01T00:00:00Z"
+
+[command]
+args = ["s3", "sync", "s3://{bucket}/", "dst/", "--exact-timestamps"]
+
+[expected]
+exit_code = 0
+
+[expected.stdout]
+mode = "regex"
+value = [
+    "^Completed 11 Bytes/11 Bytes \\([^)]+\\) with 1 file\\(s\\) remaining$",
+    "^download: s3://\\{bucket\\}/file\\.txt to dst/file\\.txt$",
+]
+
+[expected.stderr]
+mode = "exact"
+value = ""
+
+[[expected.files]]
+path = "dst/file.txt"
+content = "hello world"
+
+[source]
+refs = ["aws/aws-cli#824", "aws/aws-cli#6323"]
+cli_ref = "awscli/customizations/s3/syncstrategy/exacttimestamps.py:42"
+rationale = "#824 implements --exact-timestamps; #6323 documents download-direction semantics. ExactTimestampsSync.compare_time returns total_seconds(delta)==0 for download — any timestamp difference (delta ≠ 0) returns False, meaning should_sync fires. Contrast with default where download skips when S3 is newer."

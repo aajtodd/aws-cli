@@ -1,0 +1,44 @@
+[test]
+name = "rm_recursive_dryrun"
+description = "rm --recursive --dryrun lists each object with (dryrun) delete: and does not delete"
+tags = ["rm", "dryrun", "delete", "recursive"]
+
+[[setup.buckets]]
+name = "{bucket}"
+
+[[setup.objects]]
+key = "a.txt"
+content = "aaa"
+
+[[setup.objects]]
+key = "sub/b.txt"
+content = "bbb"
+
+[command]
+args = ["s3", "rm", "s3://{bucket}/", "--recursive", "--dryrun"]
+
+[expected]
+exit_code = 0
+
+[expected.stdout]
+mode = "exact"
+value = "(dryrun) delete: s3://{bucket}/a.txt\n(dryrun) delete: s3://{bucket}/sub/b.txt\n"
+
+[expected.stderr]
+mode = "exact"
+value = ""
+
+[[expected.objects]]
+key = "a.txt"
+exists = true
+content = "aaa"
+
+[[expected.objects]]
+key = "sub/b.txt"
+exists = true
+content = "bbb"
+
+[source]
+refs = ["aws/aws-cli#1965"]
+cli_ref = "awscli/customizations/s3/results.py:334"
+rationale = "#1965 requests a global --dry-run; v2 --dryrun on rm --recursive emits one (dryrun) delete: line per object without dest"

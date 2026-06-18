@@ -1,0 +1,37 @@
+[test]
+name = "sync_exact_timestamps_upload_noop"
+description = "sync --exact-timestamps does not change upload behavior — upload still uses default newer-wins comparison"
+tags = ["sync", "sync_strategy"]
+
+[[setup.buckets]]
+name = "{bucket}"
+
+[[setup.objects]]
+key = "file.txt"
+content = "hello world"
+
+[[setup.files]]
+path = "src/file.txt"
+content = "hello world"
+# Pinned older than the S3 object's LastModified so the upload comparison SKIPS;
+# --exact-timestamps does not affect uploads, so the no-op is meaningful (not vacuous).
+last_modified = "2020-01-01T00:00:00Z"
+
+[command]
+args = ["s3", "sync", "src/", "s3://{bucket}/", "--exact-timestamps"]
+
+[expected]
+exit_code = 0
+
+[expected.stdout]
+mode = "exact"
+value = ""
+
+[expected.stderr]
+mode = "exact"
+value = ""
+
+[source]
+refs = ["aws/aws-cli#4460", "aws/aws-cli#824"]
+cli_ref = "awscli/customizations/s3/syncstrategy/exacttimestamps.py:38"
+rationale = "#4460 documents that --exact-timestamps is ignored for uploads. ExactTimestampsSync.compare_time only overrides behavior for cmd == 'download'; for upload it falls through to the parent SizeAndLastModifiedSync."

@@ -1,0 +1,52 @@
+[test]
+name = "cp_special_chars_in_transfer_output"
+description = "cp transfer output renders special characters in key names and local paths raw (not percent-encoded). Covers space, '&', '+', '=', and '%' literal in the s3:// URI and local path portions of the transfer line."
+tags = ["cp", "path_display"]
+
+[[setup.buckets]]
+name = "{bucket}"
+
+[[setup.files]]
+path = "src/a b.txt"
+content = "x"
+
+[[setup.files]]
+path = "src/a&b.txt"
+content = "x"
+
+[[setup.files]]
+path = "src/a+b.txt"
+content = "x"
+
+[[setup.files]]
+path = "src/a=b.txt"
+content = "x"
+
+[[setup.files]]
+path = "src/p%ct.txt"
+content = "x"
+
+[command]
+args = ["s3", "cp", "src/", "s3://{bucket}/", "--recursive", "--no-progress"]
+
+[expected]
+exit_code = 0
+
+[expected.stdout]
+mode = "unordered"
+value = [
+    "upload: src/a b.txt to s3://{bucket}/a b.txt",
+    "upload: src/a&b.txt to s3://{bucket}/a&b.txt",
+    "upload: src/a+b.txt to s3://{bucket}/a+b.txt",
+    "upload: src/a=b.txt to s3://{bucket}/a=b.txt",
+    "upload: src/p%ct.txt to s3://{bucket}/p%ct.txt",
+]
+
+[expected.stderr]
+mode = "exact"
+value = ""
+
+[source]
+refs = ["aws/aws-cli#1805"]
+cli_ref = "awscli/customizations/s3/s3handler.py:361"
+rationale = "#1805 reported v1 percent-encoding in output; v2 renders keys raw in both ls and transfer output. _format_s3_path (line 361) prepends s3:// and returns the path without encoding; _format_local_path (line 358) uses relative_path() without encoding."

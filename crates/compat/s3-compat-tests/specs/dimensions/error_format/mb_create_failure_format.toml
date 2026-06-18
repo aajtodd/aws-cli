@@ -1,0 +1,23 @@
+[test]
+name = "mb_create_failure_format"
+description = "mb failure renders 'make_bucket failed: {path} {exception}' on stderr with exit 1 — the inline exception handler in MbCommand"
+tags = ["mb", "error_format"]
+target = "prod_only"
+
+[command]
+args = ["s3", "mb", "s3://s3-compat-test-bucket-for-spec-authoring"]
+
+[expected]
+exit_code = 1
+
+[expected.stdout]
+mode = "exact"
+value = ""
+
+[expected.stderr]
+mode = "exact"
+value = "make_bucket failed: s3://s3-compat-test-bucket-for-spec-authoring An error occurred (BucketAlreadyOwnedByYou) when calling the CreateBucket operation: Your previous request to create the named bucket succeeded and you already own it.\n"
+
+[source]
+cli_ref = "awscli/customizations/s3/subcommands.py:1273"
+rationale = "MbCommand has its own try/except printing 'make_bucket failed: {path} {exception}' — structurally the same FAILURE_FORMAT template as results.py:335 but produced outside the transfer machinery."

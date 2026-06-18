@@ -29,5 +29,5 @@ value = ""
 
 [source]
 refs = ["aws/aws-cli#2784", "aws/aws-cli#3097"]
-cli_ref = "awscli/customizations/s3/subcommands.py:919"
+cli_ref = "awscli/customizations/s3/subcommands.py:926"
 rationale = "_make_last_mod_str converts LastModified to local tz (tzlocal()), not UTC; #3097 shows the docs once wrongly claimed UTC."

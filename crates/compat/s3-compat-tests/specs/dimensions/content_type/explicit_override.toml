@@ -3,6 +3,11 @@ name = "explicit_override"
 description = "cp with --content-type overrides extension-based inference"
 tags = ["cp", "upload", "content-type"]
 
+[source]
+cli_ref = "awscli/customizations/s3/s3handler.py:307"
+refs = ["aws/aws-cli#352"]
+rationale = "#352 added --content-type option to cp/mv/sync. When --content-type is explicit, _should_inject_content_type() returns false and the explicit value is mapped via utils.py:612."
+
 [[setup.buckets]]
 name = "{bucket}"
 

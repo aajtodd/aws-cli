@@ -1,0 +1,57 @@
+[test]
+name = "sync_delete_excludes_protected"
+description = "sync --delete does not delete destination files that match --exclude patterns"
+tags = ["sync", "sync_strategy", "filters"]
+
+[[setup.buckets]]
+name = "{bucket}"
+
+[[setup.objects]]
+key = "keep.txt"
+content = "keeper"
+
+[[setup.objects]]
+key = "protected.log"
+content = "excluded"
+
+[[setup.objects]]
+key = "removeme.txt"
+content = "goner"
+
+[[setup.files]]
+path = "src/keep.txt"
+content = "keeper"
+# Older than the S3 object's LastModified (mock seed-time or prod "now"), so the
+# upload comparator deterministically SKIPS keep.txt — isolating the --delete focus.
+last_modified = "2020-01-01T00:00:00Z"
+
+[command]
+args = ["s3", "sync", "src/", "s3://{bucket}/", "--delete", "--exclude", "*.log"]
+
+[expected]
+exit_code = 0
+
+[expected.stdout]
+mode = "exact"
+value = "delete: s3://{bucket}/removeme.txt\n"
+
+[expected.stderr]
+mode = "exact"
+value = ""
+
+[[expected.objects]]
+key = "keep.txt"
+content = "keeper"
+
+[[expected.objects]]
+key = "protected.log"
+content = "excluded"
+
+[[expected.objects]]
+key = "removeme.txt"
+exists = false
+
+[source]
+refs = ["aws/aws-cli#778", "aws/aws-cli#4923"]
+cli_ref = "awscli/customizations/s3/syncstrategy/delete.py:36"
+rationale = "#778 requests filters apply to both source and destination for --delete; #4923 confirms excluded files at destination are NOT deleted. The delete strategy help_text documents this: 'files excluded by filters are excluded from deletion.'"

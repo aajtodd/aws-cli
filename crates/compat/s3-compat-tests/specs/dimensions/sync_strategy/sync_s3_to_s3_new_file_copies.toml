@@ -1,0 +1,44 @@
+[test]
+name = "sync_s3_to_s3_new_file_copies"
+description = "s3-to-s3 sync copies a new file from source bucket to destination bucket"
+tags = ["sync", "sync_strategy"]
+# prod_only: mock lacks CopyObject (HG-001), so s3-to-s3 sync cannot run on mock.
+target = "prod_only"
+
+[[setup.buckets]]
+name = "{source}"
+
+[[setup.buckets]]
+name = "{dest}"
+
+[[setup.objects]]
+bucket = "{source}"
+key = "file.txt"
+content = "hello world"
+
+[command]
+args = ["s3", "sync", "s3://{source}/", "s3://{dest}/"]
+
+[expected]
+exit_code = 0
+
+[expected.stdout]
+mode = "regex"
+value = [
+    "^Completed 11 Bytes/11 Bytes \\([^)]+\\) with 1 file\\(s\\) remaining$",
+    "^copy: s3://\\{source\\}/file\\.txt to s3://\\{dest\\}/file\\.txt$",
+]
+
+[expected.stderr]
+mode = "exact"
+value = ""
+
+[[expected.objects]]
+bucket = "{dest}"
+key = "file.txt"
+content = "hello world"
+
+[source]
+refs = ["aws/aws-cli#207"]
+cli_ref = "awscli/customizations/s3/syncstrategy/base.py:260"
+rationale = "#207 establishes sync as a command supporting s3-to-s3. MissingFileSync (file_not_at_dest) returns True for a file present only at source, triggering CopyObject."

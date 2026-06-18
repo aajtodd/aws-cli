@@ -1,0 +1,42 @@
+[test]
+name = "sync_download_dryrun"
+description = "sync --dryrun S3→local prints (dryrun) download: lines and does not download"
+tags = ["sync", "dryrun", "download"]
+
+[[setup.buckets]]
+name = "{bucket}"
+
+[[setup.objects]]
+key = "src/a.txt"
+content = "aaa"
+
+[[setup.objects]]
+key = "src/b.txt"
+content = "bbb"
+
+[command]
+args = ["s3", "sync", "s3://{bucket}/src/", "dst/", "--dryrun"]
+
+[expected]
+exit_code = 0
+
+[expected.stdout]
+mode = "exact"
+value = "(dryrun) download: s3://{bucket}/src/a.txt to dst/a.txt\n(dryrun) download: s3://{bucket}/src/b.txt to dst/b.txt\n"
+
+[expected.stderr]
+mode = "exact"
+value = ""
+
+[[expected.files]]
+path = "dst/a.txt"
+exists = false
+
+[[expected.files]]
+path = "dst/b.txt"
+exists = false
+
+[source]
+refs = ["aws/aws-cli#6863"]
+cli_ref = "awscli/customizations/s3/s3handler.py:248"
+rationale = "#6863 requests dryrun include download estimates; v2 sync --dryrun shows only operation lines without sizes"

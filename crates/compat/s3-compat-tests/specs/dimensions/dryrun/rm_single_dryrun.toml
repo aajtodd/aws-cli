@@ -1,0 +1,35 @@
+[test]
+name = "rm_single_dryrun"
+description = "rm --dryrun prints (dryrun) delete: line and does not delete the object"
+tags = ["rm", "dryrun", "delete"]
+
+[[setup.buckets]]
+name = "{bucket}"
+
+[[setup.objects]]
+key = "hello.txt"
+content = "hello world"
+
+[command]
+args = ["s3", "rm", "s3://{bucket}/hello.txt", "--dryrun"]
+
+[expected]
+exit_code = 0
+
+[expected.stdout]
+mode = "exact"
+value = "(dryrun) delete: s3://{bucket}/hello.txt\n"
+
+[expected.stderr]
+mode = "exact"
+value = ""
+
+[[expected.objects]]
+key = "hello.txt"
+exists = true
+content = "hello world"
+
+[source]
+refs = ["aws/aws-cli#1965"]
+cli_ref = "awscli/customizations/s3/s3handler.py:275"
+rationale = "#1965 requests a global --dry-run parameter; v2 provides --dryrun only on s3 cp/mv/rm/sync — the delete format uses src-only (no dest)"

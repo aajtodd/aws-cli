@@ -1,7 +1,13 @@
 [test]
 name = "no_extension"
-description = "cp uploads file with no extension — no content_type is inferred"
+description = "cp uploads file with no extension — no content_type inferred; S3 applies binary/octet-stream default"
 tags = ["cp", "upload", "content-type"]
+target = "prod_only"
+
+[source]
+cli_ref = "awscli/customizations/s3/utils.py:340"
+refs = ["aws/aws-cli#7045"]
+rationale = "guess_content_type() returns None for extensionless files — no ContentType sent. S3 applies the binary/octet-stream default server-side. #7045 requests file-magic detection; v2 has none."
 
 [[setup.buckets]]
 name = "{bucket}"
@@ -18,4 +24,4 @@ exit_code = 0
 
 [[expected.objects]]
 key = "Makefile"
-exists = true
+content_type = "binary/octet-stream"

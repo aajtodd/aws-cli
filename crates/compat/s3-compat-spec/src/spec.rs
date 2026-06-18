@@ -95,6 +95,13 @@ pub struct LocalFile {
     pub path: String,
     pub content: Option<String>,
     pub size: Option<u64>,
+    /// Set the file's modification time after writing. ISO-8601, e.g.
+    /// `2020-01-01T00:00:00Z` — the same format as
+    /// `[[setup.objects]].last_modified`. Lets a spec pin a deterministic
+    /// mtime relative to a seeded object's `LastModified`, which `sync`'s
+    /// timestamp comparison depends on. Without it, files are created at
+    /// "now", which races against an object's second-granularity `LastModified`.
+    pub last_modified: Option<String>,
     pub symlink_to: Option<String>,
     pub permissions: Option<String>,
     pub permissions_windows: Option<WindowsPermissions>,

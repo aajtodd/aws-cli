@@ -54,4 +54,5 @@ mode = "golden"
 
 [source]
 refs = ["aws/aws-cli#1805", "aws/aws-cli#2930"]
-rationale = "#1805 (v1) reported percent-encoded keys in output; v2 decodes the EncodingType=url round-trip and displays keys raw. #2930 covers spaces and field alignment."
+cli_ref = "awscli/customizations/s3/subcommands.py:871"
+rationale = "#1805 (v1) reported percent-encoded keys in `s3 ls` output; v2 prints the key verbatim. Non-recursive ls takes the use_basename branch (_display_page default, subcommands.py:866) and assembles `content['Key']` directly into the output line at :871 with no re-encoding; the test keys contain no `/` so the basename equals the full key. #2930 covers spaces and field alignment."
