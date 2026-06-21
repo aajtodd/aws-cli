@@ -36,6 +36,16 @@ cases that can change the outcome (e.g. each class of special character, not
 just one), so the suite answers the behavior exhaustively rather than
 anecdotally.
 
+**No hollow specs.** A spec must assert the behavior it claims to cover, not
+just that the command ran. An `exit_code = 0` with no `stdout`/`stderr` and no
+`[[expected.objects]]`/`[[expected.files]]` assertion proves almost nothing — it
+passes against a CLI that does the wrong thing silently. Assert the observable
+result that *is* the contract: the output lines, the resulting object/file state,
+the specific header or metadata the scenario is about. If the only thing you can
+assert is the exit code, the scenario is either miscategorized or blocked on a
+harness gap (see below) — say so in the classification; don't ship a green spec
+that checks nothing.
+
 ## Where a spec lives: dimension vs command
 
 Every spec runs *some* command, so "it uses ls" never decides placement. Ask:
@@ -282,6 +292,49 @@ stdin = "bytes to pipe to the CLI"
   so `ls`/`sync` failing on a nonexistent bucket are mock+prod. Use a hardcoded,
   clearly-nonexistent bucket name (not `{bucket}`) for these.
 
+## Setup Fields on `[[setup.files]]`
+
+Seed local files in the working dir before the CLI runs. Available fields:
+
+- `path: string` — path relative to the working dir (parent dirs auto-created)
+- `content: string` — file body (UTF-8; `base64:...` for binary)
+- `size: u64` — create a file of this size instead of inline `content` (filler bytes)
+- `last_modified: string` — set the file's mtime after writing (ISO-8601, e.g.
+  `2020-01-01T00:00:00Z`). Pin this whenever a `sync` timestamp comparison is in
+  play: without it files are created at "now", which races against a seeded
+  object's second-granularity `LastModified` and makes the spec flaky.
+- `symlink_to: string` — create `path` as a symlink to this target (for symlink
+  -follow / `--no-follow-symlinks` behavior)
+- `permissions: string` — octal chmod (e.g. `"0644"`), POSIX only
+- `permissions_windows: { readonly = true }` — Windows ACL equivalent
+- `platform: ["unix", ...]` — restrict this file to the listed platforms
+
+## `prod_only` vs `unspeccable`: don't conflate them
+
+When a behavior can't be a normal mock+prod spec, which bucket it falls into
+decides whether it's tracked as coverable-later or genuinely out of reach:
+
+- **`prod_only`** — the behavior is real and assertable, but the *mock* can't
+  reproduce it (a mock fidelity gap), while *prod can*. The spec exists and runs
+  green under `./compat.sh validate`; it just can't run against mock. Set
+  `target = "prod_only"` under `[test]` (the runner then skips it on mock runs
+  instead of failing), classify it `spec prod_only`, and file the blocking mock
+  gap as an HG-### entry. This is a *temporary* state: closing the mock gap lets
+  you drop the `target` back to the default `both`, promoting it to a full
+  mock+prod `spec`.
+- **`unspeccable:<cap>`** — *no* backend the harness can drive will let you assert
+  the behavior, because the harness lacks a capability to observe it (no request
+  log → can't assert retry counts / user-agent / credential precedence; no fault
+  injection → can't assert mid-transfer corruption recovery). Prod doesn't rescue
+  it; the gap is in what the harness can *see*, not in the mock's fidelity. Record
+  `unspeccable:<cap>` naming the missing capability, and file the HG-### for that
+  capability.
+
+The test: *if I had prod creds right now, could I write a spec that asserts this?*
+Yes → `prod_only`. No, because nothing can observe it → `unspeccable`. Never label
+a behavior `unspeccable` to avoid the prod round-trip — that hides a real,
+coverable contract.
+
 ## Assertion Fields on `[[expected.objects]]`
 
 Partial match — declared fields are asserted, absent fields are ignored.
@@ -291,12 +344,21 @@ Available fields:
 - `content: string` — verified as bytes (UTF-8 string in TOML)
 - `size: u64`
 - `content_type: string`
-- `e_tag: string`
+- `cache_control: string` — `Cache-Control` header (from `--cache-control`)
+- `content_encoding: string` — `Content-Encoding` header (from `--content-encoding`)
+- `content_disposition: string` — `Content-Disposition` header (from `--content-disposition`)
+- `content_language: string` — `Content-Language` header (from `--content-language`)
+- `e_tag: string` — including quotes, e.g. `"\"abc123\""`
 - `storage_class: string` (SDK enum name, e.g. `"STANDARD"`)
 - `server_side_encryption: string` (e.g. `"AES256"`)
 - `checksum_type: string` (`"FULL_OBJECT"` or `"COMPOSITE"`)
 - `checksum_sha256`, `checksum_sha1`, `checksum_crc32`,
   `checksum_crc32c`, `checksum_crc64nvme` (base64 strings)
+- `upload_method: "put_object" | "multipart"` — mechanism inferred from the ETag
+  (`"hex-N"` suffix = multipart). Portable across mock and prod.
+- `part_count: u32` — multipart part count parsed from the ETag `"hex-N"` suffix
+  (`N`). A single-PUT object has no `-N` suffix and yields no part count; set this
+  to pin the number of parts (e.g. a 16 MiB upload at the 8 MiB default chunksize = 2).
 - `metadata: { key = "value", ... }` — partial match by default
 - `metadata_strict: true` — fail if unexpected keys present
 

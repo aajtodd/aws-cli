@@ -174,6 +174,14 @@ pub struct ExpectedObject {
     pub size: Option<u64>,
     /// Expected content-type.
     pub content_type: Option<String>,
+    /// Expected Cache-Control header (from `--cache-control`).
+    pub cache_control: Option<String>,
+    /// Expected Content-Encoding header (from `--content-encoding`).
+    pub content_encoding: Option<String>,
+    /// Expected Content-Disposition header (from `--content-disposition`).
+    pub content_disposition: Option<String>,
+    /// Expected Content-Language header (from `--content-language`).
+    pub content_language: Option<String>,
     /// Expected ETag (including quotes, e.g. `"\"abc123\""`)
     pub e_tag: Option<String>,
     /// Expected storage class.
@@ -206,6 +214,11 @@ pub struct ExpectedObject {
     /// Portable across mock and prod. For protocol-level mechanism assertions
     /// (request counts, part sizes, etc.) see future `expected.mock.*` surface.
     pub upload_method: Option<UploadMethod>,
+    /// Expected multipart part count, parsed from the ETag `"hex-N"` suffix
+    /// (`N`). `None` on the assertion side skips the check; set it to pin the
+    /// number of parts (e.g. a 16 MiB upload at the 8 MiB default chunksize = 2).
+    /// A single-PUT object has no `-N` suffix and yields no part count.
+    pub part_count: Option<u32>,
 }
 
 /// Deserialize an `Option<T>` from a string using `FromStr`.
@@ -381,13 +394,22 @@ rationale = "Idempotent delete must still print the delete: line and exit 0."
         let source = spec.source.as_ref().unwrap();
         assert_eq!(
             source.refs,
-            ["aws/aws-cli#6926", "https://github.com/boto/s3transfer/pull/87"]
+            [
+                "aws/aws-cli#6926",
+                "https://github.com/boto/s3transfer/pull/87"
+            ]
         );
         assert_eq!(
             source.cli_ref.as_deref(),
             Some("awscli/customizations/s3/results.py:180")
         );
-        assert!(source.rationale.as_deref().unwrap().contains("delete: line"));
+        assert!(
+            source
+                .rationale
+                .as_deref()
+                .unwrap()
+                .contains("delete: line")
+        );
     }
 
     #[test]

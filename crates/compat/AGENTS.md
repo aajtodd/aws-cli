@@ -65,8 +65,8 @@ RUST_LOG=s3_compat_spec::assertions::object=debug ./compat.sh test <filter>
    against prod.
 
 Step 4 is mandatory. Mock-only confidence is false confidence. Divergences
-from prod either indicate mock fidelity gaps (fix upstream at
-`s3-tm-vnext-mock`) or real behavioral
+from prod either indicate mock fidelity gaps (fix upstream in the
+`aws-s3-transfer-manager-rs` repo, branch `s3-tm-vnext`) or real behavioral
 compatibility issues we should capture in the spec.
 
 ## Code Quality Expectations
@@ -81,8 +81,8 @@ compatibility issues we should capture in the spec.
 
 ## Hard Constraints
 
-- **Mock server lives in a different repo** (`s3-tm-vnext-mock`). Path
-  dependency. Mock changes go there, not here.
+- **Mock server lives in a different repo** (`aws-s3-transfer-manager-rs`,
+  branch `s3-tm-vnext`). Git/path dependency. Mock changes go there, not here.
 - **Test tokio runtime is shared**, via `crate::runtime().block_on(...)`.
   Never use `#[tokio::test]` in generated spec tests — per-test runtimes
   drop and kill the mock server's accept loop. The regression guard at

@@ -172,6 +172,10 @@ impl TestBackend {
                     .to_vec();
                 let head = aws_sdk_s3::operation::head_object::HeadObjectOutput::builder()
                     .set_content_type(output.content_type)
+                    .set_cache_control(output.cache_control)
+                    .set_content_encoding(output.content_encoding)
+                    .set_content_disposition(output.content_disposition)
+                    .set_content_language(output.content_language)
                     .set_content_length(output.content_length)
                     .set_e_tag(output.e_tag)
                     .set_storage_class(output.storage_class)

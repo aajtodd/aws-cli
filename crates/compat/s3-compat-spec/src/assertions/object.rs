@@ -190,6 +190,70 @@ pub fn assert_object(
         }
     }
 
+    // Cache-Control
+    if let Some(expected_cc) = &expected.cache_control {
+        let actual = h.cache_control().unwrap_or("");
+        if actual == expected_cc {
+            tracing::debug!(key = %expected.key, cache_control = actual, "cache_control matches");
+            results.push(AssertionResult::Pass);
+        } else {
+            results.push(AssertionResult::Fail {
+                message: format!(
+                    "object {}/{} cache_control mismatch: expected {:?}, got {:?}",
+                    expected.bucket, expected.key, expected_cc, actual
+                ),
+            });
+        }
+    }
+
+    // Content-Encoding
+    if let Some(expected_ce) = &expected.content_encoding {
+        let actual = h.content_encoding().unwrap_or("");
+        if actual == expected_ce {
+            tracing::debug!(key = %expected.key, content_encoding = actual, "content_encoding matches");
+            results.push(AssertionResult::Pass);
+        } else {
+            results.push(AssertionResult::Fail {
+                message: format!(
+                    "object {}/{} content_encoding mismatch: expected {:?}, got {:?}",
+                    expected.bucket, expected.key, expected_ce, actual
+                ),
+            });
+        }
+    }
+
+    // Content-Disposition
+    if let Some(expected_cd) = &expected.content_disposition {
+        let actual = h.content_disposition().unwrap_or("");
+        if actual == expected_cd {
+            tracing::debug!(key = %expected.key, content_disposition = actual, "content_disposition matches");
+            results.push(AssertionResult::Pass);
+        } else {
+            results.push(AssertionResult::Fail {
+                message: format!(
+                    "object {}/{} content_disposition mismatch: expected {:?}, got {:?}",
+                    expected.bucket, expected.key, expected_cd, actual
+                ),
+            });
+        }
+    }
+
+    // Content-Language
+    if let Some(expected_cl) = &expected.content_language {
+        let actual = h.content_language().unwrap_or("");
+        if actual == expected_cl {
+            tracing::debug!(key = %expected.key, content_language = actual, "content_language matches");
+            results.push(AssertionResult::Pass);
+        } else {
+            results.push(AssertionResult::Fail {
+                message: format!(
+                    "object {}/{} content_language mismatch: expected {:?}, got {:?}",
+                    expected.bucket, expected.key, expected_cl, actual
+                ),
+            });
+        }
+    }
+
     // ETag
     if let Some(expected_etag) = &expected.e_tag {
         let actual_etag = h.e_tag().unwrap_or("");
@@ -224,6 +288,25 @@ pub fn assert_object(
                 message: format!(
                     "object {}/{} upload_method mismatch: expected {:?}, got {:?} (etag={:?})",
                     expected.bucket, expected.key, expected_method, actual_method, etag
+                ),
+            });
+        }
+    }
+
+    // Part count — parsed from the multipart ETag suffix (`"hex-N"` → N)
+    if let Some(expected_pc) = expected.part_count {
+        let etag = h.e_tag().unwrap_or("").trim_matches('"');
+        let actual_pc = etag
+            .rsplit_once('-')
+            .and_then(|(_, n)| n.parse::<u32>().ok());
+        if actual_pc == Some(expected_pc) {
+            tracing::debug!(key = %expected.key, part_count = expected_pc, "part_count matches");
+            results.push(AssertionResult::Pass);
+        } else {
+            results.push(AssertionResult::Fail {
+                message: format!(
+                    "object {}/{} part_count mismatch: expected {}, got {:?} (etag={:?})",
+                    expected.bucket, expected.key, expected_pc, actual_pc, etag
                 ),
             });
         }
@@ -375,6 +458,10 @@ mod tests {
             content: None,
             size: None,
             content_type: None,
+            cache_control: None,
+            content_encoding: None,
+            content_disposition: None,
+            content_language: None,
             e_tag: None,
             storage_class: None,
             server_side_encryption: None,
@@ -387,6 +474,7 @@ mod tests {
             metadata: HashMap::new(),
             metadata_strict: false,
             upload_method: None,
+            part_count: None,
         }
     }
 
@@ -477,6 +565,54 @@ mod tests {
         let mut exp = expected_obj("f.txt");
         exp.content_type = Some("application/json".into());
         let h = head("text/plain", 5);
+        let results = assert_object(&exp, Some(&h), None);
+        assert!(results.iter().any(|r| !r.is_pass()));
+    }
+
+    #[test]
+    fn cache_control_match() {
+        let mut exp = expected_obj("f.txt");
+        exp.cache_control = Some("max-age=600, public".into());
+        let h = HeadObjectOutput::builder()
+            .cache_control("max-age=600, public")
+            .content_length(5)
+            .build();
+        let results = assert_object(&exp, Some(&h), None);
+        assert!(results.iter().all(|r| r.is_pass()));
+    }
+
+    #[test]
+    fn cache_control_mismatch() {
+        let mut exp = expected_obj("f.txt");
+        exp.cache_control = Some("no-cache".into());
+        let h = HeadObjectOutput::builder()
+            .cache_control("max-age=600, public")
+            .content_length(5)
+            .build();
+        let results = assert_object(&exp, Some(&h), None);
+        assert!(results.iter().any(|r| !r.is_pass()));
+    }
+
+    #[test]
+    fn part_count_match() {
+        let mut exp = expected_obj("big.bin");
+        exp.part_count = Some(2);
+        let h = HeadObjectOutput::builder()
+            .e_tag("\"d41d8cd98f00b204e9800998ecf8427e-2\"")
+            .content_length(16777216)
+            .build();
+        let results = assert_object(&exp, Some(&h), None);
+        assert!(results.iter().all(|r| r.is_pass()));
+    }
+
+    #[test]
+    fn part_count_mismatch() {
+        let mut exp = expected_obj("big.bin");
+        exp.part_count = Some(3);
+        let h = HeadObjectOutput::builder()
+            .e_tag("\"d41d8cd98f00b204e9800998ecf8427e-2\"")
+            .content_length(16777216)
+            .build();
         let results = assert_object(&exp, Some(&h), None);
         assert!(results.iter().any(|r| !r.is_pass()));
     }
