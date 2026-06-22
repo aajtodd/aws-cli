@@ -131,6 +131,15 @@ pub struct CommandSpec {
     pub timeout: Option<u64>,
     #[serde(default)]
     pub env: HashMap<String, String>,
+    /// Opt out of the harness-injected baseline environment, per key. The
+    /// harness normally wires its baseline credentials, region, and endpoint
+    /// into the highest-precedence layer (environment variables), which means a
+    /// spec cannot otherwise test precedence, absence, or an alternative source
+    /// for those values. Set a key `false` to make the harness inject nothing
+    /// for it, handing that layer to the spec (via `env`, a seeded
+    /// config/credentials file, a profile, or a flag). Defaults to injecting all.
+    #[serde(default)]
+    pub default_env: DefaultEnv,
     pub pipe_to: Option<Vec<String>>,
     // Possible future field: `tty: bool` — run the CLI through a pseudo-terminal
     // (pty) so it sees isatty()=true, for surfaces whose output depends on a TTY.
@@ -139,6 +148,44 @@ pub struct CommandSpec {
     // emitted through the pipe, so it is already observable here without a pty.
     // Retained as an option for future non-s3 surfaces. Would require a pty crate
     // (e.g. portable-pty or pty-process).
+}
+
+/// Per-key control over the harness's baseline environment injection.
+///
+/// Each field gates one baseline value the harness injects via environment
+/// variables (the highest-precedence credential/config layer below an explicit
+/// CLI flag). All default to `true` (inject), so existing specs are unaffected.
+/// Set one `false` to suppress that injection entirely — the harness then writes
+/// nothing for it anywhere, and the spec owns that layer.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct DefaultEnv {
+    /// Inject `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` / `AWS_SESSION_TOKEN`.
+    /// Suppress to test credential precedence, absence ("Unable to locate
+    /// credentials"), or a non-env source (profile, credential_process).
+    #[serde(default = "default_true")]
+    pub credentials: bool,
+    /// Inject `AWS_DEFAULT_REGION`. Suppress to test region resolution from
+    /// config/profile or its absence.
+    #[serde(default = "default_true")]
+    pub region: bool,
+    /// Inject `AWS_ENDPOINT_URL`. Suppress to test endpoint resolution from
+    /// config/profile or endpoint precedence. NOTE: on the mock backend the
+    /// endpoint is a dynamic `127.0.0.1:PORT`; a spec suppressing this must
+    /// supply the endpoint itself, so mock coverage awaits an `{endpoint}`
+    /// placeholder (not yet implemented) — prod specs can hardcode the URL.
+    #[serde(default = "default_true")]
+    pub endpoint_url: bool,
+}
+
+impl Default for DefaultEnv {
+    fn default() -> Self {
+        Self {
+            credentials: true,
+            region: true,
+            endpoint_url: true,
+        }
+    }
 }
 
 #[derive(Clone, Debug, Deserialize)]

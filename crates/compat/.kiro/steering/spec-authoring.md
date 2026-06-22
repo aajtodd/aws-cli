@@ -261,6 +261,42 @@ args = ["s3", "cp", "-", "s3://{bucket}/k"]
 stdin = "bytes to pipe to the CLI"
 ```
 
+## Controlling the Baseline Environment (`[command].default_env`)
+
+The harness wires its baseline credentials, region, and endpoint into the CLI's
+**environment variables** — the highest-precedence config layer below an explicit
+flag (`flag > env > profile/config-file`). This is what lets specs reach the mock
+offline, but it also means the harness *occupies* the env layer: a spec cannot test
+precedence, absence, or a non-env source for any value the harness injects there,
+because the injected env value always wins.
+
+To take control of that layer, opt out per key under `[command]`:
+
+```toml
+[command]
+args = ["s3", "ls", "--profile", "p"]
+default_env = { credentials = false }    # harness injects no AWS creds; spec owns them
+```
+
+Keys (all default `true` = inject; unknown keys are rejected):
+
+- `credentials` — `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` / `AWS_SESSION_TOKEN`.
+  Suppress to test credential absence ("Unable to locate credentials", exit 253), the
+  `AWS_SECRET_KEY` alias, secret-without-access-key, or a non-env source
+  (`credential_process`, profile creds). With injection on, env creds win over even a
+  `--profile`'s configured creds, so any non-env credential spec MUST suppress this.
+- `region` — `AWS_DEFAULT_REGION`. Suppress to test region resolution from
+  config/profile or its absence.
+- `endpoint_url` — `AWS_ENDPOINT_URL`. Suppress to test endpoint resolution/precedence.
+  CAVEAT: on mock the endpoint is a dynamic `127.0.0.1:PORT`; a suppressing spec must
+  supply the endpoint itself, so mock coverage awaits an `{endpoint}` placeholder (not
+  yet built). Prod specs can hardcode the URL.
+
+When you suppress a key, the harness writes that value **nowhere** (not env, not the
+config file) — you supply it via `env`, a seeded `[[setup.files]]` config/credentials
+file, a profile, or a flag. The harness never writes region/endpoint/creds to the
+config file otherwise; `[setup.config]` only authors the `s3 =` subsection and similar.
+
 ## Placeholder Conventions
 
 - `{bucket}` is auto-registered for every spec. Use it in command args and

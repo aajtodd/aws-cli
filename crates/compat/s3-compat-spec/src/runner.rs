@@ -15,7 +15,8 @@ use crate::error::{Error, ErrorKind};
 use crate::executor::CliExecutor;
 use crate::harness::TestEnv;
 use crate::spec::{
-    ConfigSetup, Deviation, Expected, LocalFile, OutputAssertion, S3Object, TestSpec, TestTarget,
+    ConfigSetup, DefaultEnv, Deviation, Expected, LocalFile, OutputAssertion, S3Object, TestSpec,
+    TestTarget,
 };
 
 /// Resolved credentials for CLI execution.
@@ -366,7 +367,7 @@ pub async fn run_spec(
         create_local_files(&setup.files, &env.working_dir, &env.placeholders)?;
     }
     let config = spec.setup.as_ref().and_then(|s| s.config.as_ref());
-    let config_path = write_aws_config(config, &env.working_dir, env.backend().endpoint_url())?;
+    let config_path = write_aws_config(config, &env.working_dir)?;
     if tracing::enabled!(tracing::Level::TRACE)
         && let Ok(contents) = std::fs::read_to_string(&config_path)
     {
@@ -376,7 +377,14 @@ pub async fn run_spec(
     // 3. Build env + execute CLI
     let region = config.map(|c| c.region.as_str()).unwrap_or("us-east-1");
     let config_env = config.map(|c| &c.env).cloned().unwrap_or_default();
-    let cli_env = build_env(env, &config_path, region, &spec.command.env, &config_env);
+    let cli_env = build_env(
+        env,
+        &config_path,
+        region,
+        &spec.command.env,
+        &config_env,
+        &spec.command.default_env,
+    );
     for (k, v) in &cli_env {
         tracing::trace!(key = %k, value = %v, "cli env var");
     }
@@ -926,12 +934,15 @@ pub fn create_local_files(
 
 /// Write AWS config file to the working directory.
 ///
-/// Returns the path to the config file. Credentials are not written —
-/// they are injected via environment variables by `build_env`.
+/// Returns the path to the config file. The harness's baseline region,
+/// endpoint, and credentials are NOT written here — they are injected via
+/// environment variables by `build_env` (the single baseline carrier). This
+/// file holds only what a spec explicitly authors via `[setup.config]` (e.g.
+/// the `s3 =` subsection); a spec that needs region/endpoint/creds in a file
+/// (to test a non-env source) seeds its own via `[[setup.files]]`.
 pub fn write_aws_config(
     config: Option<&ConfigSetup>,
     working_dir: &Path,
-    endpoint_url: Option<&str>,
 ) -> Result<PathBuf, Error> {
     let aws_dir = working_dir.join(".aws");
     std::fs::create_dir_all(&aws_dir)
@@ -939,13 +950,7 @@ pub fn write_aws_config(
 
     let config_path = aws_dir.join("config");
 
-    let region = config.map(|c| c.region.as_str()).unwrap_or("us-east-1");
-
-    let mut config_content = format!("[default]\nregion = {region}\n");
-
-    if let Some(url) = endpoint_url {
-        config_content.push_str(&format!("endpoint_url = {url}\n"));
-    }
+    let mut config_content = String::from("[default]\n");
 
     if let Some(cfg) = config
         && !cfg.s3.is_empty()
@@ -969,24 +974,34 @@ pub fn build_env(
     region: &str,
     spec_env: &HashMap<String, String>,
     config_env: &HashMap<String, String>,
+    default_env: &DefaultEnv,
 ) -> HashMap<String, String> {
     let mut result = HashMap::new();
 
-    if let Some(url) = env.backend().endpoint_url() {
+    // Baseline values the harness wires into the environment (highest-precedence
+    // layer below an explicit CLI flag). Each is suppressible via `[command]
+    // .default_env` so a spec can own that layer to test precedence/absence.
+    if default_env.endpoint_url
+        && let Some(url) = env.backend().endpoint_url()
+    {
         result.insert("AWS_ENDPOINT_URL".into(), url.into());
     }
-    result.insert(
-        "AWS_ACCESS_KEY_ID".into(),
-        env.credentials.access_key_id.clone(),
-    );
-    result.insert(
-        "AWS_SECRET_ACCESS_KEY".into(),
-        env.credentials.secret_access_key.clone(),
-    );
-    if let Some(token) = &env.credentials.session_token {
-        result.insert("AWS_SESSION_TOKEN".into(), token.clone());
+    if default_env.credentials {
+        result.insert(
+            "AWS_ACCESS_KEY_ID".into(),
+            env.credentials.access_key_id.clone(),
+        );
+        result.insert(
+            "AWS_SECRET_ACCESS_KEY".into(),
+            env.credentials.secret_access_key.clone(),
+        );
+        if let Some(token) = &env.credentials.session_token {
+            result.insert("AWS_SESSION_TOKEN".into(), token.clone());
+        }
     }
-    result.insert("AWS_DEFAULT_REGION".into(), region.into());
+    if default_env.region {
+        result.insert("AWS_DEFAULT_REGION".into(), region.into());
+    }
     result.insert(
         "AWS_CONFIG_FILE".into(),
         config_path.to_string_lossy().into(),
@@ -1374,13 +1389,14 @@ mod tests {
             s3: HashMap::from([("multipart_threshold".into(), "8MB".into())]),
             env: HashMap::new(),
         };
-        let config_path =
-            write_aws_config(Some(&cfg), dir.path(), Some("http://localhost:5000")).unwrap();
+        let config_path = write_aws_config(Some(&cfg), dir.path()).unwrap();
 
         let config = std::fs::read_to_string(&config_path).unwrap();
-        assert!(config.contains("region = eu-west-1"));
-        assert!(config.contains("endpoint_url = http://localhost:5000"));
+        // Region/endpoint are injected via env (build_env), never written to the
+        // config file — the file holds only spec-authored config like `s3 =`.
         assert!(config.contains("multipart_threshold = 8MB"));
+        assert!(!config.contains("region ="));
+        assert!(!config.contains("endpoint_url"));
     }
 
     #[tokio::test]
@@ -1412,7 +1428,14 @@ exit_code = 0
             ("CFG_KEY".into(), "overridden".into()),
         ]);
 
-        let cli_env = build_env(&env, &config_path, "us-west-2", &spec_env, &config_env);
+        let cli_env = build_env(
+            &env,
+            &config_path,
+            "us-west-2",
+            &spec_env,
+            &config_env,
+            &DefaultEnv::default(),
+        );
 
         assert!(
             cli_env
@@ -1466,9 +1489,57 @@ exit_code = 0
             "us-east-1",
             &HashMap::new(),
             &HashMap::new(),
+            &DefaultEnv::default(),
         );
         assert_eq!(cli_env.get("AWS_SESSION_TOKEN").unwrap(), "TOKEN123");
         assert_eq!(cli_env.get("AWS_ACCESS_KEY_ID").unwrap(), "AKID");
+        drop(env);
+        harness.shutdown().await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_build_env_suppresses_baseline_injection() {
+        let harness = crate::harness::TestHarness::init(
+            crate::harness::HarnessConfig::default(),
+            PathBuf::from("/usr/bin/aws"),
+            CredentialSource::mock_default(),
+        )
+        .await
+        .unwrap();
+        let spec = crate::spec::parse_spec(
+            r#"
+[test]
+name = "suppress_test"
+description = "test"
+[command]
+args = ["hello"]
+default_env = { credentials = false, region = false, endpoint_url = false }
+[expected]
+exit_code = 0
+"#,
+        )
+        .unwrap();
+        let env = harness.lease(&spec, &spec.test.name).await.unwrap();
+        let config_path = env.working_dir.join("config");
+
+        let cli_env = build_env(
+            &env,
+            &config_path,
+            "us-west-2",
+            &spec.command.env,
+            &HashMap::new(),
+            &spec.command.default_env,
+        );
+
+        // Suppressed baseline keys are absent — the spec owns those layers.
+        assert!(!cli_env.contains_key("AWS_ACCESS_KEY_ID"));
+        assert!(!cli_env.contains_key("AWS_SECRET_ACCESS_KEY"));
+        assert!(!cli_env.contains_key("AWS_SESSION_TOKEN"));
+        assert!(!cli_env.contains_key("AWS_DEFAULT_REGION"));
+        assert!(!cli_env.contains_key("AWS_ENDPOINT_URL"));
+        // Non-suppressible harness env is still present.
+        assert_eq!(cli_env.get("NO_COLOR").unwrap(), "1");
+        assert!(cli_env.contains_key("HOME"));
         drop(env);
         harness.shutdown().await.unwrap();
     }
@@ -1510,26 +1581,29 @@ exit_code = 0
     #[test]
     fn test_write_aws_config_defaults() {
         let dir = tempfile::tempdir().unwrap();
-        let config_path = write_aws_config(None, dir.path(), None).unwrap();
+        let config_path = write_aws_config(None, dir.path()).unwrap();
 
         let config = std::fs::read_to_string(&config_path).unwrap();
-        assert!(config.contains("region = us-east-1"));
+        // Only the bare [default] header — no baseline region/endpoint shadow.
+        assert!(config.contains("[default]"));
+        assert!(!config.contains("region ="));
         assert!(!config.contains("endpoint_url"));
     }
 
     #[test]
-    fn test_write_aws_config_no_endpoint() {
+    fn test_write_aws_config_s3_subsection_only() {
         let dir = tempfile::tempdir().unwrap();
         let cfg = ConfigSetup {
             region: "ap-southeast-1".into(),
             s3: HashMap::from([("multipart_threshold".into(), "64MB".into())]),
             env: HashMap::new(),
         };
-        let config_path = write_aws_config(Some(&cfg), dir.path(), None).unwrap();
+        let config_path = write_aws_config(Some(&cfg), dir.path()).unwrap();
 
         let config = std::fs::read_to_string(&config_path).unwrap();
-        assert!(config.contains("region = ap-southeast-1"));
+        // The s3 subsection is written; region is NOT (env carries it).
         assert!(config.contains("multipart_threshold = 64MB"));
+        assert!(!config.contains("region ="));
         assert!(!config.contains("endpoint_url"));
     }
 
