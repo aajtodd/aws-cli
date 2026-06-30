@@ -1,0 +1,47 @@
+[test]
+name = "cp_upload_symlink_followed"
+description = "cp --recursive follows symlinks by default; the target's content is uploaded under the symlink's key name"
+tags = ["cp", "recursive_paths", "recursive"]
+platform = ["macos", "linux"]
+
+[[setup.buckets]]
+name = "{bucket}"
+
+[[setup.files]]
+path = "src/real.txt"
+content = "target-content"
+
+[[setup.files]]
+path = "src/link.txt"
+symlink_to = "real.txt"
+
+[command]
+args = ["s3", "cp", "src/", "s3://{bucket}/", "--recursive"]
+
+[expected]
+exit_code = 0
+
+[expected.stdout]
+mode = "regex"
+value = [
+    "^Completed \\d+ Bytes/\\d+ Bytes \\([^)]+\\) with \\d+ file\\(s\\) remaining$",
+    "^upload: src/link\\.txt to s3://\\{bucket\\}/link\\.txt$",
+    "^upload: src/real\\.txt to s3://\\{bucket\\}/real\\.txt$",
+]
+
+[expected.stderr]
+mode = "exact"
+value = ""
+
+[[expected.objects]]
+key = "link.txt"
+content = "target-content"
+
+[[expected.objects]]
+key = "real.txt"
+content = "target-content"
+
+[source]
+refs = ["aws/aws-cli#854"]
+cli_ref = "awscli/customizations/s3/filegenerator.py:149"
+rationale = "#854 implemented --follow-symlinks / --no-follow-symlinks; the FileGenerator constructor defaults follow_symlinks=True (:149), so os.walk / list_files traverses symlinks as regular files and yields the target's content under the link's name."

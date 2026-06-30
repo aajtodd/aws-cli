@@ -1,0 +1,36 @@
+[test]
+name = "cp_upload_single_file_in_dir"
+description = "cp --recursive with a single file in the source directory still uploads it correctly"
+tags = ["cp", "recursive_paths", "recursive"]
+
+[[setup.buckets]]
+name = "{bucket}"
+
+[[setup.files]]
+path = "only/single.txt"
+content = "solo"
+
+[command]
+args = ["s3", "cp", "only/", "s3://{bucket}/dest/", "--recursive"]
+
+[expected]
+exit_code = 0
+
+[expected.stdout]
+mode = "regex"
+value = [
+    "^Completed 4 Bytes/4 Bytes \\([^)]+\\) with 1 file\\(s\\) remaining$",
+    "^upload: only/single\\.txt to s3://\\{bucket\\}/dest/single\\.txt$",
+]
+
+[expected.stderr]
+mode = "exact"
+value = ""
+
+[[expected.objects]]
+key = "dest/single.txt"
+content = "solo"
+
+[source]
+cli_ref = "awscli/customizations/s3/utils.py:294"
+rationale = "find_dest_path_comp_key (line 294) derives rel_path by stripping src['path'] from the file path; with one file, the relative path is just the filename and dest_key = prefix + filename."

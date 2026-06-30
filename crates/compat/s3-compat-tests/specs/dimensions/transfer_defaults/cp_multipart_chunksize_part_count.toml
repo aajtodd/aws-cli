@@ -1,0 +1,38 @@
+[test]
+name = "cp_multipart_chunksize_part_count"
+description = "cp of a 16 MiB file uploads multipart in 2 parts at the default 8 MiB chunksize"
+tags = ["cp", "transfer_defaults", "multipart"]
+
+[[setup.buckets]]
+name = "{bucket}"
+
+[[setup.files]]
+path = "double.bin"
+size = 16777216  # 16 MiB — exactly 2 × default 8 MiB multipart_chunksize
+
+[command]
+args = ["s3", "cp", "double.bin", "s3://{bucket}/double.bin"]
+
+[expected]
+exit_code = 0
+
+[expected.stdout]
+mode = "regex"
+value = [
+    "^Completed 16\\.0 MiB/16\\.0 MiB \\([^)]+\\) with 1 file\\(s\\) remaining$",
+    "^upload: \\./double\\.bin to s3://\\{bucket\\}/double\\.bin$",
+]
+
+[expected.stderr]
+mode = "exact"
+value = ""
+
+[[expected.objects]]
+key = "double.bin"
+size = 16777216
+upload_method = "multipart"
+part_count = 2
+
+[source]
+cli_ref = "awscli/customizations/s3/transferconfig.py:28"
+rationale = "Default multipart_chunksize is 8 MiB (transferconfig.py:28); a 16 MiB upload is split into exactly 2 parts (16 / 8), observable as the multipart ETag suffix `-2`."

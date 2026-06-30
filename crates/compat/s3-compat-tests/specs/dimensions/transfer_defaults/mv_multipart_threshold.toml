@@ -1,0 +1,42 @@
+[test]
+name = "mv_multipart_threshold"
+description = "mv uploads a file exceeding the 8 MiB multipart_threshold via multipart"
+tags = ["mv", "transfer_defaults", "multipart"]
+
+[[setup.buckets]]
+name = "{bucket}"
+
+[[setup.files]]
+path = "large.bin"
+size = 9437184  # 9 MiB — exceeds 8 MiB default multipart_threshold
+
+[command]
+args = ["s3", "mv", "large.bin", "s3://{bucket}/large.bin"]
+
+[expected]
+exit_code = 0
+
+[expected.stdout]
+mode = "regex"
+value = [
+    "^Completed [0-9.]+ [KMG]?i?B/9\\.0 MiB \\([^)]+\\) with 1 file\\(s\\) remaining$",
+    "^move: \\./large\\.bin to s3://\\{bucket\\}/large\\.bin$",
+]
+
+[expected.stderr]
+mode = "exact"
+value = ""
+
+[[expected.objects]]
+key = "large.bin"
+size = 9437184
+upload_method = "multipart"
+
+[[expected.files]]
+path = "large.bin"
+exists = false
+
+[source]
+refs = ["aws/aws-cli#374"]
+cli_ref = "awscli/customizations/s3/transferconfig.py:27"
+rationale = "#374 added multipart upload support to mv; the 8 MiB threshold applies identically to cp and mv."

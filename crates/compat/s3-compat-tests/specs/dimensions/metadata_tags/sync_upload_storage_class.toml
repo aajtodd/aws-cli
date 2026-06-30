@@ -1,0 +1,27 @@
+[test]
+name = "sync_upload_storage_class"
+description = "sync --storage-class sets storage class on all uploaded objects"
+tags = ["sync", "upload", "metadata_tags"]
+
+[source]
+cli_ref = "awscli/customizations/s3/utils.py:610"
+refs = ["aws/aws-cli#352"]
+rationale = "#352 added --storage-class to cp/mv/sync; _set_general_object_params maps it for every upload."
+
+[[setup.buckets]]
+name = "{bucket}"
+
+[[setup.files]]
+path = "src/file.txt"
+content = "content"
+
+[command]
+args = ["s3", "sync", "./src/", "s3://{bucket}/out/", "--storage-class", "STANDARD_IA"]
+
+[expected]
+exit_code = 0
+
+[[expected.objects]]
+key = "out/file.txt"
+content = "content"
+storage_class = "STANDARD_IA"

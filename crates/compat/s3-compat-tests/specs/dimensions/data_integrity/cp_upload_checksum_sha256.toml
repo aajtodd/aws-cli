@@ -1,0 +1,39 @@
+[test]
+name = "cp_upload_checksum_sha256"
+description = "cp upload with --checksum-algorithm SHA256 stores SHA256 checksum"
+tags = ["cp", "data_integrity"]
+
+[[setup.buckets]]
+name = "{bucket}"
+
+[[setup.files]]
+path = "hello.txt"
+content = "hello world"
+
+[command]
+args = ["s3", "cp", "hello.txt", "s3://{bucket}/hello.txt", "--checksum-algorithm", "SHA256"]
+
+[expected]
+exit_code = 0
+
+[expected.stdout]
+mode = "regex"
+value = [
+    "^Completed 11 Bytes/11 Bytes \\([^)]+\\) with 1 file\\(s\\) remaining$",
+    "^upload: \\./hello\\.txt to s3://\\{bucket\\}/hello\\.txt$",
+]
+
+[expected.stderr]
+mode = "exact"
+value = ""
+
+[[expected.objects]]
+key = "hello.txt"
+content = "hello world"
+checksum_sha256 = "uU0nuZNNPgilLlLX2n2r+sSE7+N6U4DukIj3rOLvzek="
+checksum_type = "FULL_OBJECT"
+
+[source]
+refs = ["aws/aws-cli#8933", "aws/aws-cli#6750"]
+cli_ref = "awscli/customizations/s3/utils.py:599"
+rationale = "#8933 added --checksum-algorithm to high-level s3 commands; _set_checksum_algorithm_param forwards the selected algorithm to the PutObject request (utils.py:599)."

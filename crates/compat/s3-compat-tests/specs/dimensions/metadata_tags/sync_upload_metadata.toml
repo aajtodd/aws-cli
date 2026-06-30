@@ -1,0 +1,36 @@
+[test]
+name = "sync_upload_metadata"
+description = "sync --metadata applies user metadata globally to all synced objects"
+tags = ["sync", "upload", "metadata_tags"]
+
+[source]
+cli_ref = "awscli/customizations/s3/utils.py:654"
+refs = ["aws/aws-cli#2045"]
+rationale = "#2045 requests per-object mapping; v2 still applies --metadata globally. _set_metadata_params passes the dict to every PutObject."
+
+[[setup.buckets]]
+name = "{bucket}"
+
+[[setup.files]]
+path = "src/one.txt"
+content = "one"
+
+[[setup.files]]
+path = "src/two.txt"
+content = "two"
+
+[command]
+args = ["s3", "sync", "./src/", "s3://{bucket}/prefix/", "--metadata", "{\"team\":\"infra\"}"]
+
+[expected]
+exit_code = 0
+
+[[expected.objects]]
+key = "prefix/one.txt"
+content = "one"
+metadata = { "team" = "infra" }
+
+[[expected.objects]]
+key = "prefix/two.txt"
+content = "two"
+metadata = { "team" = "infra" }

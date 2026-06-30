@@ -1,0 +1,49 @@
+[test]
+name = "cp_upload_unreadable_file_skipped"
+description = "cp --recursive skips a file with permissions 000 with a warning and exit code 2; the object is not created"
+tags = ["cp", "recursive_paths", "recursive"]
+platform = ["macos", "linux"]
+
+[[setup.buckets]]
+name = "{bucket}"
+
+[[setup.files]]
+path = "src/good.txt"
+content = "good"
+
+[[setup.files]]
+path = "src/nope.txt"
+content = "secret"
+permissions = "000"
+
+[command]
+args = ["s3", "cp", "src/", "s3://{bucket}/", "--recursive"]
+
+[expected]
+exit_code = 2
+
+[expected.stdout]
+mode = "regex"
+value = [
+    "^Completed \\d+ Bytes/\\d+ Bytes \\([^)]+\\) with \\d+ file\\(s\\) remaining$",
+    "^upload: src/good\\.txt to s3://\\{bucket\\}/good\\.txt$",
+]
+
+[expected.stderr]
+mode = "regex"
+value = [
+    "^warning: Skipping file .*/src/nope\\.txt\\. File/Directory is not readable\\.$",
+]
+
+[[expected.objects]]
+key = "good.txt"
+content = "good"
+
+[[expected.objects]]
+key = "nope.txt"
+exists = false
+
+[source]
+refs = ["aws/aws-cli#881", "aws/aws-cli#736"]
+cli_ref = "awscli/customizations/s3/filegenerator.py:338"
+rationale = "#881 added skip-with-warning for unreadable files; #736 requested the behavior. is_readable (:56) attempts open() which fails on permissions 000; triggers_warning (:338) emits 'File/Directory is not readable.' and skips."

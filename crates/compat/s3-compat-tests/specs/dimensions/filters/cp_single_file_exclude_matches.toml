@@ -1,0 +1,34 @@
+[test]
+name = "cp_single_file_exclude_matches"
+description = "single-file cp with --exclude matching the source file silently does nothing"
+tags = ["cp", "filters"]
+
+[[setup.buckets]]
+name = "{bucket}"
+
+[[setup.files]]
+path = "src/file.txt"
+content = "hello"
+
+[command]
+args = ["s3", "cp", "src/file.txt", "s3://{bucket}/file.txt", "--exclude", "*.txt"]
+
+[expected]
+exit_code = 0
+
+[expected.stdout]
+mode = "exact"
+value = ""
+
+[expected.stderr]
+mode = "exact"
+value = ""
+
+[[expected.objects]]
+key = "file.txt"
+exists = false
+
+[source]
+refs = ["aws/aws-cli#4774"]
+cli_ref = "awscli/customizations/s3/filters.py:149"
+rationale = "#4774 reports silent exit 0 when filters match no files; single-file cp passes through the same Filter.call — if the file matches --exclude, it is not yielded"

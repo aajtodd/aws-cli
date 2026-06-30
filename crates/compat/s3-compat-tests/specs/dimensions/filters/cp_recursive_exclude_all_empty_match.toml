@@ -1,0 +1,42 @@
+[test]
+name = "cp_recursive_exclude_all_empty_match"
+description = "cp --recursive --exclude '*' with no --include produces no output and exits 0"
+tags = ["cp", "filters"]
+
+[[setup.buckets]]
+name = "{bucket}"
+
+[[setup.files]]
+path = "src/a.txt"
+content = "aa"
+
+[[setup.files]]
+path = "src/b.log"
+content = "bb"
+
+[command]
+args = ["s3", "cp", "src/", "s3://{bucket}/dest/", "--recursive", "--exclude", "*"]
+
+[expected]
+exit_code = 0
+
+[expected.stdout]
+mode = "exact"
+value = ""
+
+[expected.stderr]
+mode = "exact"
+value = ""
+
+[[expected.objects]]
+key = "dest/a.txt"
+exists = false
+
+[[expected.objects]]
+key = "dest/b.log"
+exists = false
+
+[source]
+refs = ["aws/aws-cli#1438"]
+cli_ref = "awscli/customizations/s3/filters.py:149"
+rationale = "#1438 reports silent exit 0 when filters match no files; --exclude '*' excludes everything, yielding no file_infos from the Filter.call generator"

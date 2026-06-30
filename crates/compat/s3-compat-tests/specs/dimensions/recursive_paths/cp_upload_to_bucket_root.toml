@@ -1,0 +1,45 @@
+[test]
+name = "cp_upload_to_bucket_root"
+description = "cp --recursive to s3://bucket (no trailing slash, no prefix) places files at bucket root keys"
+tags = ["cp", "recursive_paths", "recursive"]
+
+[[setup.buckets]]
+name = "{bucket}"
+
+[[setup.files]]
+path = "dir/alpha.txt"
+content = "aaa"
+
+[[setup.files]]
+path = "dir/sub/beta.txt"
+content = "bbb"
+
+[command]
+args = ["s3", "cp", "dir/", "s3://{bucket}", "--recursive"]
+
+[expected]
+exit_code = 0
+
+[expected.stdout]
+mode = "regex"
+value = [
+    "^Completed 6 Bytes/6 Bytes \\([^)]+\\) with 1 file\\(s\\) remaining$",
+    "^upload: dir/alpha\\.txt to s3://\\{bucket\\}/alpha\\.txt$",
+    "^upload: dir/sub/beta\\.txt to s3://\\{bucket\\}/sub/beta\\.txt$",
+]
+
+[expected.stderr]
+mode = "exact"
+value = ""
+
+[[expected.objects]]
+key = "alpha.txt"
+content = "aaa"
+
+[[expected.objects]]
+key = "sub/beta.txt"
+content = "bbb"
+
+[source]
+cli_ref = "awscli/customizations/s3/utils.py:294"
+rationale = "When dest is 's3://bucket' (no trailing slash), the CLI still appends / to form the dest prefix (trailing-slash append behavior); rel_path is appended after the / so keys are at bucket root."

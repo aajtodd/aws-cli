@@ -1,0 +1,35 @@
+[test]
+name = "cp_s3_to_s3_metadata_directive_replace"
+description = "cp s3→s3 with --metadata-directive REPLACE applies new metadata and drops existing"
+tags = ["cp", "s3_to_s3", "metadata_tags"]
+target = "prod_only"
+
+[source]
+cli_ref = "awscli/customizations/s3/utils.py:666"
+refs = ["aws/aws-cli#1188", "aws/aws-cli#6498"]
+rationale = "#1188 exposed --metadata-directive for s3 commands; _set_metadata_directive_param maps to MetadataDirective. prod_only: mock lacks CopyObject (HG-001)."
+
+[[setup.buckets]]
+name = "{source}"
+
+[[setup.buckets]]
+name = "{dest}"
+
+[[setup.objects]]
+bucket = "{source}"
+key = "file.txt"
+content = "original"
+metadata = { "old" = "value" }
+
+[command]
+args = ["s3", "cp", "s3://{source}/file.txt", "s3://{dest}/file.txt", "--metadata-directive", "REPLACE", "--metadata", "{\"new\":\"data\"}"]
+
+[expected]
+exit_code = 0
+
+[[expected.objects]]
+bucket = "{dest}"
+key = "file.txt"
+content = "original"
+metadata = { "new" = "data" }
+metadata_strict = true

@@ -1,0 +1,62 @@
+[test]
+name = "sync_download_exclude_all_include_txt"
+description = "sync download with --exclude '*' --include '*.txt' downloads only .txt objects"
+tags = ["sync", "filters"]
+
+[[setup.buckets]]
+name = "{bucket}"
+
+[[setup.objects]]
+key = "a.txt"
+content = "text"
+
+[[setup.objects]]
+key = "b.log"
+content = "logs"
+
+[[setup.objects]]
+key = "sub/c.txt"
+content = "nested"
+
+[[setup.objects]]
+key = "sub/d.csv"
+content = "data"
+
+[command]
+args = ["s3", "sync", "s3://{bucket}/", "dest/", "--exclude", "*", "--include", "*.txt"]
+
+[expected]
+exit_code = 0
+
+[expected.stdout]
+mode = "regex"
+value = [
+    "^Completed \\d+ Bytes/\\d+ Bytes \\([^)]+\\) with \\d+ file\\(s\\) remaining$",
+    "^download: s3://\\{bucket\\}/a\\.txt to dest/a\\.txt$",
+    "^download: s3://\\{bucket\\}/sub/c\\.txt to dest/sub/c\\.txt$",
+]
+
+[expected.stderr]
+mode = "exact"
+value = ""
+
+[[expected.files]]
+path = "dest/a.txt"
+content = "text"
+
+[[expected.files]]
+path = "dest/sub/c.txt"
+content = "nested"
+
+[[expected.files]]
+path = "dest/b.log"
+exists = false
+
+[[expected.files]]
+path = "dest/sub/d.csv"
+exists = false
+
+[source]
+refs = ["aws/aws-cli#7330"]
+cli_ref = "awscli/customizations/s3/filters.py:149"
+rationale = "#7330 covers the allowlist idiom; sync applies the same filter to S3 source keys via _get_s3_root path resolution"

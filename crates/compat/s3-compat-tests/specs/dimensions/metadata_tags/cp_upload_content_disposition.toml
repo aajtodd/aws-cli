@@ -1,0 +1,37 @@
+[test]
+name = "cp_upload_content_disposition"
+description = "cp --content-disposition sets the Content-Disposition header on the uploaded object"
+tags = ["cp", "upload", "metadata_tags"]
+
+[source]
+cli_ref = "awscli/customizations/s3/utils.py:614"
+rationale = "RequestParamsMapper._set_general_object_params maps the 'content_disposition' CLI param to the PutObject 'ContentDisposition' parameter (utils.py:614)."
+
+[[setup.buckets]]
+name = "{bucket}"
+
+[[setup.files]]
+path = "report.bin"
+content = "downloadable"
+
+[command]
+args = ["s3", "cp", "./report.bin", "s3://{bucket}/report.bin", "--content-disposition", 'attachment; filename="report.pdf"']
+
+[expected]
+exit_code = 0
+
+[expected.stdout]
+mode = "regex"
+value = [
+    "^Completed 12 Bytes/12 Bytes \\([^)]+\\) with 1 file\\(s\\) remaining$",
+    "^upload: \\./report\\.bin to s3://\\{bucket\\}/report\\.bin$",
+]
+
+[expected.stderr]
+mode = "exact"
+value = ""
+
+[[expected.objects]]
+key = "report.bin"
+content = "downloadable"
+content_disposition = 'attachment; filename="report.pdf"'

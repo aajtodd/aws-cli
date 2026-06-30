@@ -1,0 +1,39 @@
+[test]
+name = "cp_upload_checksum_crc64nvme"
+description = "cp upload with --checksum-algorithm CRC64NVME stores CRC64NVME checksum"
+tags = ["cp", "data_integrity"]
+
+[[setup.buckets]]
+name = "{bucket}"
+
+[[setup.files]]
+path = "hello.txt"
+content = "hello world"
+
+[command]
+args = ["s3", "cp", "hello.txt", "s3://{bucket}/hello.txt", "--checksum-algorithm", "CRC64NVME"]
+
+[expected]
+exit_code = 0
+
+[expected.stdout]
+mode = "regex"
+value = [
+    "^Completed 11 Bytes/11 Bytes \\([^)]+\\) with 1 file\\(s\\) remaining$",
+    "^upload: \\./hello\\.txt to s3://\\{bucket\\}/hello\\.txt$",
+]
+
+[expected.stderr]
+mode = "exact"
+value = ""
+
+[[expected.objects]]
+key = "hello.txt"
+content = "hello world"
+checksum_crc64nvme = "jSnVw/bqjr4="
+checksum_type = "FULL_OBJECT"
+
+[source]
+refs = ["aws/aws-cli#9141", "aws/aws-cli#8933"]
+cli_ref = "awscli/customizations/s3/utils.py:599"
+rationale = "#9141 introduced CRC64NVME as a supported --checksum-algorithm choice; _set_checksum_algorithm_param forwards it to the PutObject request (utils.py:599)."

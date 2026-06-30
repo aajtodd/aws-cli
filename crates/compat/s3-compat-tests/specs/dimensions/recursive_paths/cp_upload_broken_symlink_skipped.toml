@@ -1,0 +1,48 @@
+[test]
+name = "cp_upload_broken_symlink_skipped"
+description = "cp --recursive skips a broken symlink with a warning and exit code 2; the object is not created"
+tags = ["cp", "recursive_paths", "recursive"]
+platform = ["macos", "linux"]
+
+[[setup.buckets]]
+name = "{bucket}"
+
+[[setup.files]]
+path = "src/good.txt"
+content = "good"
+
+[[setup.files]]
+path = "src/broken.txt"
+symlink_to = "nonexistent.txt"
+
+[command]
+args = ["s3", "cp", "src/", "s3://{bucket}/", "--recursive"]
+
+[expected]
+exit_code = 2
+
+[expected.stdout]
+mode = "regex"
+value = [
+    "^Completed \\d+ Bytes/\\d+ Bytes \\([^)]+\\) with \\d+ file\\(s\\) remaining$",
+    "^upload: src/good\\.txt to s3://\\{bucket\\}/good\\.txt$",
+]
+
+[expected.stderr]
+mode = "regex"
+value = [
+    "^warning: Skipping file .*/src/broken\\.txt\\. File does not exist\\.$",
+]
+
+[[expected.objects]]
+key = "good.txt"
+content = "good"
+
+[[expected.objects]]
+key = "broken.txt"
+exists = false
+
+[source]
+refs = ["aws/aws-cli#511", "aws/aws-cli#781"]
+cli_ref = "awscli/customizations/s3/filegenerator.py:323"
+rationale = "#511 added broken-symlink notification; #781 confirmed skip-and-continue semantics. triggers_warning calls os.path.exists (:323) which returns False for a broken symlink, emitting 'File does not exist.' and skipping."

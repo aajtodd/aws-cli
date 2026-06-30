@@ -1,0 +1,63 @@
+[test]
+name = "mv_recursive_s3_exclude"
+description = "mv --recursive --exclude preserves excluded objects at source and moves non-matching"
+tags = ["mv", "filters"]
+target = "prod_only"
+
+[[setup.buckets]]
+name = "{bucket}"
+
+[[setup.objects]]
+key = "src/keep.log"
+content = "keep"
+
+[[setup.objects]]
+key = "src/move.txt"
+content = "moved"
+
+[[setup.objects]]
+key = "src/also.dat"
+content = "also"
+
+[command]
+args = ["s3", "mv", "s3://{bucket}/src/", "s3://{bucket}/dst/", "--recursive", "--exclude", "*.log"]
+
+[expected]
+exit_code = 0
+
+[expected.stdout]
+mode = "regex"
+value = [
+    "^Completed \\d+ Bytes/\\d+ Bytes \\([^)]+\\) with \\d+ file\\(s\\) remaining$",
+    "^move: s3://\\{bucket\\}/src/move\\.txt to s3://\\{bucket\\}/dst/move\\.txt$",
+    "^move: s3://\\{bucket\\}/src/also\\.dat to s3://\\{bucket\\}/dst/also\\.dat$",
+]
+
+[expected.stderr]
+mode = "exact"
+value = ""
+
+[[expected.objects]]
+key = "src/keep.log"
+exists = true
+content = "keep"
+
+[[expected.objects]]
+key = "src/move.txt"
+exists = false
+
+[[expected.objects]]
+key = "src/also.dat"
+exists = false
+
+[[expected.objects]]
+key = "dst/move.txt"
+content = "moved"
+
+[[expected.objects]]
+key = "dst/also.dat"
+content = "also"
+
+[source]
+cli_ref = "awscli/customizations/s3/filters.py:149"
+rationale = "mv --recursive applies the same filter pipeline; excluded files are not yielded for the move operation. S3-to-S3 requires CopyObject (mock lacks it — HG-001)"

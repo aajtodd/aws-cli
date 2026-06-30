@@ -1,0 +1,37 @@
+[test]
+name = "cp_below_threshold_put_object"
+description = "cp of a file below the 8 MiB multipart_threshold uses single PutObject"
+tags = ["cp", "transfer_defaults"]
+
+[[setup.buckets]]
+name = "{bucket}"
+
+[[setup.files]]
+path = "small.bin"
+size = 7340032  # 7 MiB — below 8 MiB default multipart_threshold
+
+[command]
+args = ["s3", "cp", "small.bin", "s3://{bucket}/small.bin"]
+
+[expected]
+exit_code = 0
+
+[expected.stdout]
+mode = "regex"
+value = [
+    "^Completed 7\\.0 MiB/7\\.0 MiB \\([^)]+\\) with 1 file\\(s\\) remaining$",
+    "^upload: \\./small\\.bin to s3://\\{bucket\\}/small\\.bin$",
+]
+
+[expected.stderr]
+mode = "exact"
+value = ""
+
+[[expected.objects]]
+key = "small.bin"
+size = 7340032
+upload_method = "put_object"
+
+[source]
+cli_ref = "awscli/customizations/s3/transferconfig.py:27"
+rationale = "Default multipart_threshold is 8 MiB; files below the threshold use single PutObject."

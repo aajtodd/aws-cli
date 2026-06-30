@@ -1,0 +1,37 @@
+[test]
+name = "cp_upload_cache_control"
+description = "cp --cache-control sets the Cache-Control header on the uploaded object"
+tags = ["cp", "upload", "metadata_tags"]
+
+[source]
+cli_ref = "awscli/customizations/s3/utils.py:613"
+rationale = "RequestParamsMapper._set_general_object_params maps the 'cache_control' CLI param to the PutObject 'CacheControl' parameter (utils.py:613)."
+
+[[setup.buckets]]
+name = "{bucket}"
+
+[[setup.files]]
+path = "asset.js"
+content = "var x = 1;"
+
+[command]
+args = ["s3", "cp", "./asset.js", "s3://{bucket}/asset.js", "--cache-control", "max-age=31536000, public"]
+
+[expected]
+exit_code = 0
+
+[expected.stdout]
+mode = "regex"
+value = [
+    "^Completed 10 Bytes/10 Bytes \\([^)]+\\) with 1 file\\(s\\) remaining$",
+    "^upload: \\./asset\\.js to s3://\\{bucket\\}/asset\\.js$",
+]
+
+[expected.stderr]
+mode = "exact"
+value = ""
+
+[[expected.objects]]
+key = "asset.js"
+content = "var x = 1;"
+cache_control = "max-age=31536000, public"

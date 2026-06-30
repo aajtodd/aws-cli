@@ -1,0 +1,62 @@
+[test]
+name = "cp_recursive_glob_question_mark"
+description = "fnmatch ? matches exactly one character in filter patterns"
+tags = ["cp", "filters"]
+
+[[setup.buckets]]
+name = "{bucket}"
+
+[[setup.files]]
+path = "src/f1.txt"
+content = "one"
+
+[[setup.files]]
+path = "src/f2.txt"
+content = "two"
+
+[[setup.files]]
+path = "src/f10.txt"
+content = "ten"
+
+[[setup.files]]
+path = "src/fa.txt"
+content = "alpha"
+
+[command]
+args = ["s3", "cp", "src/", "s3://{bucket}/dest/", "--recursive", "--exclude", "*", "--include", "f?.txt"]
+
+[expected]
+exit_code = 0
+
+[expected.stdout]
+mode = "regex"
+value = [
+    "^Completed \\d+ Bytes/\\d+ Bytes \\([^)]+\\) with \\d+ file\\(s\\) remaining$",
+    "^upload: src/f1\\.txt to s3://\\{bucket\\}/dest/f1\\.txt$",
+    "^upload: src/f2\\.txt to s3://\\{bucket\\}/dest/f2\\.txt$",
+    "^upload: src/fa\\.txt to s3://\\{bucket\\}/dest/fa\\.txt$",
+]
+
+[expected.stderr]
+mode = "exact"
+value = ""
+
+[[expected.objects]]
+key = "dest/f1.txt"
+content = "one"
+
+[[expected.objects]]
+key = "dest/f2.txt"
+content = "two"
+
+[[expected.objects]]
+key = "dest/fa.txt"
+content = "alpha"
+
+[[expected.objects]]
+key = "dest/f10.txt"
+exists = false
+
+[source]
+cli_ref = "awscli/customizations/s3/filters.py:149"
+rationale = "fnmatch.fnmatch translates ? to match exactly one character; f10.txt has two characters after 'f' so does not match f?.txt"

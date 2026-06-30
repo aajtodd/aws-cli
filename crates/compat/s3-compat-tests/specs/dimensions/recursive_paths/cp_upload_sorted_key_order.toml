@@ -1,0 +1,38 @@
+[test]
+name = "cp_upload_sorted_key_order"
+description = "cp --recursive dryrun shows files in S3-key-compatible sorted order (directories sorted as prefix/ before sibling files)"
+tags = ["cp", "recursive_paths", "recursive", "dryrun"]
+
+[[setup.buckets]]
+name = "{bucket}"
+
+[[setup.files]]
+path = "data/b.txt"
+content = "b"
+
+[[setup.files]]
+path = "data/a/nested.txt"
+content = "n"
+
+[[setup.files]]
+path = "data/a.txt"
+content = "a"
+
+[command]
+args = ["s3", "cp", "data/", "s3://{bucket}/out/", "--recursive", "--dryrun"]
+
+[expected]
+exit_code = 0
+
+[expected.stdout]
+mode = "exact"
+value = "(dryrun) upload: data/a.txt to s3://{bucket}/out/a.txt\n(dryrun) upload: data/a/nested.txt to s3://{bucket}/out/a/nested.txt\n(dryrun) upload: data/b.txt to s3://{bucket}/out/b.txt\n"
+
+[expected.stderr]
+mode = "exact"
+value = ""
+
+[source]
+refs = ["aws/aws-cli#444"]
+cli_ref = "awscli/customizations/s3/filegenerator.py:275"
+rationale = "#444 established alphabetical ordering in local file listing to match S3 ListObjects key order; filegenerator.normalize_sort (line 275) sorts with os.sep→'/' replacement so 'a.txt' sorts before 'a/' contents."

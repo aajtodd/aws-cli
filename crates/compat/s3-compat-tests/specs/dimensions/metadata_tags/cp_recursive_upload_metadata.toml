@@ -1,0 +1,43 @@
+[test]
+name = "cp_recursive_upload_metadata"
+description = "cp --recursive --metadata applies user metadata to all uploaded objects"
+tags = ["cp", "recursive", "metadata_tags"]
+
+[source]
+cli_ref = "awscli/customizations/s3/utils.py:654"
+refs = ["aws/aws-cli#1652"]
+rationale = "#1652 added --metadata to cp; in recursive mode, metadata is applied globally to every uploaded object."
+
+[[setup.buckets]]
+name = "{bucket}"
+
+[[setup.files]]
+path = "dir/a.txt"
+content = "aaa"
+
+[[setup.files]]
+path = "dir/b.txt"
+content = "bbb"
+
+[command]
+args = ["s3", "cp", "./dir/", "s3://{bucket}/dest/", "--recursive", "--metadata", "{\"env\":\"staging\"}"]
+
+[expected]
+exit_code = 0
+
+[expected.stdout]
+mode = "regex"
+value = [
+    "^upload: dir/[ab]\\.txt to s3://\\{bucket\\}/dest/[ab]\\.txt$",
+    "^upload: dir/[ab]\\.txt to s3://\\{bucket\\}/dest/[ab]\\.txt$",
+]
+
+[[expected.objects]]
+key = "dest/a.txt"
+content = "aaa"
+metadata = { "env" = "staging" }
+
+[[expected.objects]]
+key = "dest/b.txt"
+content = "bbb"
+metadata = { "env" = "staging" }

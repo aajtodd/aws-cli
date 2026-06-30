@@ -1,0 +1,55 @@
+[test]
+name = "sync_upload_nested_key_structure"
+description = "sync uploads nested directory tree; keys are relative paths under dest prefix"
+tags = ["sync", "recursive_paths"]
+
+[[setup.buckets]]
+name = "{bucket}"
+
+[[setup.files]]
+path = "src/top.txt"
+content = "tt"
+
+[[setup.files]]
+path = "src/dir1/inner.txt"
+content = "ii"
+
+[[setup.files]]
+path = "src/dir1/dir2/leaf.txt"
+content = "ll"
+
+[command]
+args = ["s3", "sync", "src/", "s3://{bucket}/pfx/"]
+
+[expected]
+exit_code = 0
+
+[expected.stdout]
+mode = "regex"
+value = [
+    "^Completed \\d+ Bytes/6 Bytes \\([^)]+\\) with \\d+ file\\(s\\) remaining$",
+    "^upload: src/dir1/dir2/leaf\\.txt to s3://\\{bucket\\}/pfx/dir1/dir2/leaf\\.txt$",
+    "^upload: src/dir1/inner\\.txt to s3://\\{bucket\\}/pfx/dir1/inner\\.txt$",
+    "^upload: src/top\\.txt to s3://\\{bucket\\}/pfx/top\\.txt$",
+]
+
+[expected.stderr]
+mode = "exact"
+value = ""
+
+[[expected.objects]]
+key = "pfx/top.txt"
+content = "tt"
+
+[[expected.objects]]
+key = "pfx/dir1/inner.txt"
+content = "ii"
+
+[[expected.objects]]
+key = "pfx/dir1/dir2/leaf.txt"
+content = "ll"
+
+[source]
+refs = ["aws/aws-cli#444"]
+cli_ref = "awscli/customizations/s3/filegenerator.py:275"
+rationale = "#444 added sorted local file listing; sync uses the same filegenerator walk and dest-key derivation as cp --recursive, preserving nested structure under the dest prefix."

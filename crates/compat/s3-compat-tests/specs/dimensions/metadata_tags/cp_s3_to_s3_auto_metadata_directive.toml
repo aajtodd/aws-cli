@@ -1,0 +1,35 @@
+[test]
+name = "cp_s3_to_s3_auto_metadata_directive"
+description = "cp s3→s3 with --metadata but no explicit --metadata-directive auto-sets REPLACE"
+tags = ["cp", "s3_to_s3", "metadata_tags"]
+target = "prod_only"
+
+[source]
+cli_ref = "awscli/customizations/s3/utils.py:661"
+refs = ["aws/aws-cli#1188"]
+rationale = "_auto_populate_metadata_directive sets MetadataDirective=REPLACE when Metadata is present but no directive was specified; #1188 exposed this behavior. prod_only: mock lacks CopyObject (HG-001)."
+
+[[setup.buckets]]
+name = "{source}"
+
+[[setup.buckets]]
+name = "{dest}"
+
+[[setup.objects]]
+bucket = "{source}"
+key = "data.txt"
+content = "hello"
+metadata = { "original" = "meta" }
+
+[command]
+args = ["s3", "cp", "s3://{source}/data.txt", "s3://{dest}/data.txt", "--metadata", "{\"replaced\":\"yes\"}"]
+
+[expected]
+exit_code = 0
+
+[[expected.objects]]
+bucket = "{dest}"
+key = "data.txt"
+content = "hello"
+metadata = { "replaced" = "yes" }
+metadata_strict = true

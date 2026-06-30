@@ -1,0 +1,37 @@
+[test]
+name = "cp_upload_content_encoding"
+description = "cp --content-encoding sets the Content-Encoding header on the uploaded object"
+tags = ["cp", "upload", "metadata_tags"]
+
+[source]
+cli_ref = "awscli/customizations/s3/utils.py:615"
+rationale = "RequestParamsMapper._set_general_object_params maps the 'content_encoding' CLI param to the PutObject 'ContentEncoding' parameter (utils.py:615)."
+
+[[setup.buckets]]
+name = "{bucket}"
+
+[[setup.files]]
+path = "data.bin"
+content = "encoded-body"
+
+[command]
+args = ["s3", "cp", "./data.bin", "s3://{bucket}/data.bin", "--content-encoding", "gzip"]
+
+[expected]
+exit_code = 0
+
+[expected.stdout]
+mode = "regex"
+value = [
+    "^Completed 12 Bytes/12 Bytes \\([^)]+\\) with 1 file\\(s\\) remaining$",
+    "^upload: \\./data\\.bin to s3://\\{bucket\\}/data\\.bin$",
+]
+
+[expected.stderr]
+mode = "exact"
+value = ""
+
+[[expected.objects]]
+key = "data.bin"
+content = "encoded-body"
+content_encoding = "gzip"

@@ -1,0 +1,41 @@
+[test]
+name = "cp_multipart_checksum_crc32_composite"
+description = "cp multipart upload with --checksum-algorithm CRC32 produces COMPOSITE checksum type"
+tags = ["cp", "data_integrity", "multipart"]
+target = "prod_only"
+target_reason = "Mock HEAD fails with streaming error on multipart objects uploaded with explicit --checksum-algorithm (HG-011)"
+
+[[setup.buckets]]
+name = "{bucket}"
+
+[[setup.files]]
+path = "big.bin"
+size = 9437184
+
+[command]
+args = ["s3", "cp", "big.bin", "s3://{bucket}/big.bin", "--checksum-algorithm", "CRC32"]
+
+[expected]
+exit_code = 0
+
+[expected.stdout]
+mode = "regex"
+value = [
+    "^Completed [0-9.]+ [KMG]?i?B/9\\.0 MiB \\([^)]+\\) with 1 file\\(s\\) remaining$",
+    "^upload: \\./big\\.bin to s3://\\{bucket\\}/big\\.bin$",
+]
+
+[expected.stderr]
+mode = "exact"
+value = ""
+
+[[expected.objects]]
+key = "big.bin"
+size = 9437184
+checksum_crc32 = "BFaKaQ==-2"
+checksum_type = "COMPOSITE"
+
+[source]
+refs = ["aws/aws-cli#8933", "aws/aws-cli#9214"]
+cli_ref = "awscli/customizations/s3/utils.py:599"
+rationale = "CRC32 multipart produces a composite checksum (base64-N suffix indicating N parts); CRC64NVME is special in supporting full-object combination."

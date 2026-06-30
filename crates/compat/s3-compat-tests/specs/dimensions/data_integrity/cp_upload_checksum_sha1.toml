@@ -1,0 +1,39 @@
+[test]
+name = "cp_upload_checksum_sha1"
+description = "cp upload with --checksum-algorithm SHA1 stores SHA1 checksum"
+tags = ["cp", "data_integrity"]
+
+[[setup.buckets]]
+name = "{bucket}"
+
+[[setup.files]]
+path = "hello.txt"
+content = "hello world"
+
+[command]
+args = ["s3", "cp", "hello.txt", "s3://{bucket}/hello.txt", "--checksum-algorithm", "SHA1"]
+
+[expected]
+exit_code = 0
+
+[expected.stdout]
+mode = "regex"
+value = [
+    "^Completed 11 Bytes/11 Bytes \\([^)]+\\) with 1 file\\(s\\) remaining$",
+    "^upload: \\./hello\\.txt to s3://\\{bucket\\}/hello\\.txt$",
+]
+
+[expected.stderr]
+mode = "exact"
+value = ""
+
+[[expected.objects]]
+key = "hello.txt"
+content = "hello world"
+checksum_sha1 = "Kq5sNclPz7QV2+lfQIuc6R7oRu0="
+checksum_type = "FULL_OBJECT"
+
+[source]
+refs = ["aws/aws-cli#8933"]
+cli_ref = "awscli/customizations/s3/utils.py:599"
+rationale = "#8933 added --checksum-algorithm to high-level s3 commands; SHA1 is one of the 5 supported choices."

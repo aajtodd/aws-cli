@@ -1,0 +1,61 @@
+[test]
+name = "cp_recursive_interleaved_filters"
+description = "multiple interleaved --exclude/--include patterns all evaluated left-to-right"
+tags = ["cp", "filters"]
+
+[[setup.buckets]]
+name = "{bucket}"
+
+[[setup.files]]
+path = "src/file.txt"
+content = "txt"
+
+[[setup.files]]
+path = "src/file.csv"
+content = "csv"
+
+[[setup.files]]
+path = "src/logs/app.log"
+content = "app"
+
+[[setup.files]]
+path = "src/logs/debug.log"
+content = "debug"
+
+[command]
+args = ["s3", "cp", "src/", "s3://{bucket}/dest/", "--recursive", "--exclude", "*.log", "--exclude", "*.csv"]
+
+[expected]
+exit_code = 0
+
+[expected.stdout]
+mode = "regex"
+value = [
+    "^Completed \\d+ Bytes/\\d+ Bytes \\([^)]+\\) with \\d+ file\\(s\\) remaining$",
+    "^upload: src/file\\.txt to s3://\\{bucket\\}/dest/file\\.txt$",
+]
+
+[expected.stderr]
+mode = "exact"
+value = ""
+
+[[expected.objects]]
+key = "dest/file.txt"
+content = "txt"
+
+[[expected.objects]]
+key = "dest/file.csv"
+exists = false
+
+[[expected.objects]]
+key = "dest/logs/app.log"
+exists = false
+
+[[expected.objects]]
+key = "dest/logs/debug.log"
+exists = false
+
+[source]
+refs = ["aws/aws-cli#476"]
+cli_ref = "awscli/customizations/s3/filters.py:124"
+rationale = "#476 confirms multiple --exclude arguments are all applied; the for-loop at :124 evaluates every pattern in sequence"

@@ -1,0 +1,51 @@
+[test]
+name = "rm_recursive_exclude_preserves"
+description = "rm --recursive --exclude preserves matching objects and deletes non-matching"
+tags = ["rm", "filters"]
+
+[[setup.buckets]]
+name = "{bucket}"
+
+[[setup.objects]]
+key = "data/a.txt"
+content = "aa"
+
+[[setup.objects]]
+key = "data/b.log"
+content = "bb"
+
+[[setup.objects]]
+key = "data/c.txt"
+content = "cc"
+
+[command]
+args = ["s3", "rm", "s3://{bucket}/data/", "--recursive", "--exclude", "*.log"]
+
+[expected]
+exit_code = 0
+
+[expected.stdout]
+mode = "unordered"
+value = ["delete: s3://{bucket}/data/a.txt", "delete: s3://{bucket}/data/c.txt"]
+
+[expected.stderr]
+mode = "exact"
+value = ""
+
+[[expected.objects]]
+key = "data/a.txt"
+exists = false
+
+[[expected.objects]]
+key = "data/b.log"
+exists = true
+content = "bb"
+
+[[expected.objects]]
+key = "data/c.txt"
+exists = false
+
+[source]
+refs = ["aws/aws-cli#1663"]
+cli_ref = "awscli/customizations/s3/filters.py:149"
+rationale = "#1663 reports --exclude with bucket prefix fails; v2 applies fnmatch against relative path — patterns without bucket prefix correctly protect matching keys"

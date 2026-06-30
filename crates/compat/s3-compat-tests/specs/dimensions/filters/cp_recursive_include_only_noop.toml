@@ -1,0 +1,54 @@
+[test]
+name = "cp_recursive_include_only_noop"
+description = "--include without preceding --exclude has no effect; all files are uploaded"
+tags = ["cp", "filters"]
+
+[[setup.buckets]]
+name = "{bucket}"
+
+[[setup.files]]
+path = "src/a.txt"
+content = "aa"
+
+[[setup.files]]
+path = "src/b.log"
+content = "bb"
+
+[[setup.files]]
+path = "src/c.dat"
+content = "cc"
+
+[command]
+args = ["s3", "cp", "src/", "s3://{bucket}/dest/", "--recursive", "--include", "*.txt"]
+
+[expected]
+exit_code = 0
+
+[expected.stdout]
+mode = "regex"
+value = [
+    "^Completed \\d+ Bytes/\\d+ Bytes \\([^)]+\\) with \\d+ file\\(s\\) remaining$",
+    "^upload: src/a\\.txt to s3://\\{bucket\\}/dest/a\\.txt$",
+    "^upload: src/b\\.log to s3://\\{bucket\\}/dest/b\\.log$",
+    "^upload: src/c\\.dat to s3://\\{bucket\\}/dest/c\\.dat$",
+]
+
+[expected.stderr]
+mode = "exact"
+value = ""
+
+[[expected.objects]]
+key = "dest/a.txt"
+content = "aa"
+
+[[expected.objects]]
+key = "dest/b.log"
+content = "bb"
+
+[[expected.objects]]
+key = "dest/c.dat"
+content = "cc"
+
+[source]
+cli_ref = "awscli/customizations/s3/filters.py:123"
+rationale = "All files start with include=True (:123); --include only sets True again — without a preceding --exclude, it changes nothing"

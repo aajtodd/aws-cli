@@ -1,0 +1,54 @@
+[test]
+name = "sync_s3_to_s3_exclude"
+description = "sync s3→s3 with --exclude skips matching keys"
+tags = ["sync", "filters"]
+target = "prod_only"
+
+[[setup.buckets]]
+name = "{bucket}"
+
+[[setup.objects]]
+key = "src/a.txt"
+content = "aa"
+
+[[setup.objects]]
+key = "src/b.log"
+content = "bb"
+
+[[setup.objects]]
+key = "src/c.txt"
+content = "cc"
+
+[command]
+args = ["s3", "sync", "s3://{bucket}/src/", "s3://{bucket}/dst/", "--exclude", "*.log"]
+
+[expected]
+exit_code = 0
+
+[expected.stdout]
+mode = "regex"
+value = [
+    "^Completed \\d+ Bytes/\\d+ Bytes \\([^)]+\\) with \\d+ file\\(s\\) remaining$",
+    "^copy: s3://\\{bucket\\}/src/a\\.txt to s3://\\{bucket\\}/dst/a\\.txt$",
+    "^copy: s3://\\{bucket\\}/src/c\\.txt to s3://\\{bucket\\}/dst/c\\.txt$",
+]
+
+[expected.stderr]
+mode = "exact"
+value = ""
+
+[[expected.objects]]
+key = "dst/a.txt"
+content = "aa"
+
+[[expected.objects]]
+key = "dst/c.txt"
+content = "cc"
+
+[[expected.objects]]
+key = "dst/b.log"
+exists = false
+
+[source]
+cli_ref = "awscli/customizations/s3/filters.py:149"
+rationale = "Sync s3→s3 applies the same filter pipeline; excluded keys are not yielded for copy. S3-to-S3 requires CopyObject (mock lacks it — HG-001)"

@@ -1,0 +1,37 @@
+[test]
+name = "cp_upload_content_language"
+description = "cp --content-language sets the Content-Language header on the uploaded object"
+tags = ["cp", "upload", "metadata_tags"]
+
+[source]
+cli_ref = "awscli/customizations/s3/utils.py:616"
+rationale = "RequestParamsMapper._set_general_object_params maps the 'content_language' CLI param to the PutObject 'ContentLanguage' parameter (utils.py:616)."
+
+[[setup.buckets]]
+name = "{bucket}"
+
+[[setup.files]]
+path = "greeting.txt"
+content = "bonjour!"
+
+[command]
+args = ["s3", "cp", "./greeting.txt", "s3://{bucket}/greeting.txt", "--content-language", "en-US"]
+
+[expected]
+exit_code = 0
+
+[expected.stdout]
+mode = "regex"
+value = [
+    "^Completed 8 Bytes/8 Bytes \\([^)]+\\) with 1 file\\(s\\) remaining$",
+    "^upload: \\./greeting\\.txt to s3://\\{bucket\\}/greeting\\.txt$",
+]
+
+[expected.stderr]
+mode = "exact"
+value = ""
+
+[[expected.objects]]
+key = "greeting.txt"
+content = "bonjour!"
+content_language = "en-US"

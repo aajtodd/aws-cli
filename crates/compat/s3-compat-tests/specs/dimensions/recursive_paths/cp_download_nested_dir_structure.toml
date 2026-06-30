@@ -1,0 +1,54 @@
+[test]
+name = "cp_download_nested_dir_structure"
+description = "cp --recursive download creates nested local directories matching S3 key structure"
+tags = ["cp", "recursive_paths", "recursive"]
+
+[[setup.buckets]]
+name = "{bucket}"
+
+[[setup.objects]]
+key = "root.txt"
+content = "root"
+
+[[setup.objects]]
+key = "a/mid.txt"
+content = "mid"
+
+[[setup.objects]]
+key = "a/b/deep.txt"
+content = "deep"
+
+[command]
+args = ["s3", "cp", "s3://{bucket}/", "out/", "--recursive"]
+
+[expected]
+exit_code = 0
+
+[expected.stdout]
+mode = "regex"
+value = [
+    "^Completed \\d+ Bytes/11 Bytes \\([^)]+\\) with \\d+ file\\(s\\) remaining$",
+    "^download: s3://\\{bucket\\}/a/b/deep\\.txt to out/a/b/deep\\.txt$",
+    "^download: s3://\\{bucket\\}/a/mid\\.txt to out/a/mid\\.txt$",
+    "^download: s3://\\{bucket\\}/root\\.txt to out/root\\.txt$",
+]
+
+[expected.stderr]
+mode = "exact"
+value = ""
+
+[[expected.files]]
+path = "out/root.txt"
+content = "root"
+
+[[expected.files]]
+path = "out/a/mid.txt"
+content = "mid"
+
+[[expected.files]]
+path = "out/a/b/deep.txt"
+content = "deep"
+
+[source]
+cli_ref = "awscli/customizations/s3/utils.py:300"
+rationale = "find_dest_path_comp_key (line 300) constructs dest_path by appending rel_path (with sep replacement) to the dest prefix, creating nested local directories as needed."

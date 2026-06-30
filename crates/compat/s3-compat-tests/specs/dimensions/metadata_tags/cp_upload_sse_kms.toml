@@ -1,0 +1,35 @@
+[test]
+name = "cp_upload_sse_kms"
+description = "cp --sse aws:kms encrypts uploaded object with KMS"
+tags = ["cp", "upload", "metadata_tags"]
+target = "prod_only"
+
+[source]
+cli_ref = "awscli/customizations/s3/utils.py:673"
+refs = ["aws/aws-cli#313"]
+rationale = "#313 requested --sse support; _set_sse_request_params maps 'sse' to 'ServerSideEncryption'. prod_only: mock ignores SSE value and always reports AES256."
+
+[[setup.buckets]]
+name = "{bucket}"
+
+[[setup.files]]
+path = "secret.dat"
+content = "sensitive"
+
+[command]
+args = ["s3", "cp", "./secret.dat", "s3://{bucket}/secret.dat", "--sse", "aws:kms"]
+
+[expected]
+exit_code = 0
+
+[expected.stdout]
+mode = "regex"
+value = [
+    "^Completed 9 Bytes/9 Bytes \\([^)]+\\) with 1 file\\(s\\) remaining$",
+    "^upload: \\./secret\\.dat to s3://\\{bucket\\}/secret\\.dat$",
+]
+
+[[expected.objects]]
+key = "secret.dat"
+content = "sensitive"
+server_side_encryption = "aws:kms"

@@ -1,0 +1,53 @@
+[test]
+name = "cp_recursive_exclude_only"
+description = "--exclude alone filters out matching files; non-matching files are uploaded"
+tags = ["cp", "filters"]
+
+[[setup.buckets]]
+name = "{bucket}"
+
+[[setup.files]]
+path = "src/keep.txt"
+content = "keep"
+
+[[setup.files]]
+path = "src/skip.log"
+content = "skip"
+
+[[setup.files]]
+path = "src/also.txt"
+content = "also"
+
+[command]
+args = ["s3", "cp", "src/", "s3://{bucket}/dest/", "--recursive", "--exclude", "*.log"]
+
+[expected]
+exit_code = 0
+
+[expected.stdout]
+mode = "regex"
+value = [
+    "^Completed \\d+ Bytes/\\d+ Bytes \\([^)]+\\) with \\d+ file\\(s\\) remaining$",
+    "^upload: src/also\\.txt to s3://\\{bucket\\}/dest/also\\.txt$",
+    "^upload: src/keep\\.txt to s3://\\{bucket\\}/dest/keep\\.txt$",
+]
+
+[expected.stderr]
+mode = "exact"
+value = ""
+
+[[expected.objects]]
+key = "dest/keep.txt"
+content = "keep"
+
+[[expected.objects]]
+key = "dest/also.txt"
+content = "also"
+
+[[expected.objects]]
+key = "dest/skip.log"
+exists = false
+
+[source]
+cli_ref = "awscli/customizations/s3/filters.py:149"
+rationale = "A single --exclude filters out matching files; non-matching files retain their default include=True status"

@@ -1,0 +1,38 @@
+[test]
+name = "cp_at_threshold_boundary"
+description = "cp of a file exactly at 8 MiB (the default multipart_threshold) uses multipart"
+tags = ["cp", "transfer_defaults", "multipart"]
+target = "prod_only"
+
+[[setup.buckets]]
+name = "{bucket}"
+
+[[setup.files]]
+path = "exact8m.bin"
+size = 8388608  # exactly 8 MiB = default multipart_threshold
+
+[command]
+args = ["s3", "cp", "exact8m.bin", "s3://{bucket}/exact8m.bin"]
+
+[expected]
+exit_code = 0
+
+[expected.stdout]
+mode = "regex"
+value = [
+    "^Completed 8\\.0 MiB/8\\.0 MiB \\([^)]+\\) with 1 file\\(s\\) remaining$",
+    "^upload: \\./exact8m\\.bin to s3://\\{bucket\\}/exact8m\\.bin$",
+]
+
+[expected.stderr]
+mode = "exact"
+value = ""
+
+[[expected.objects]]
+key = "exact8m.bin"
+size = 8388608
+upload_method = "multipart"
+
+[source]
+cli_ref = "awscli/s3transfer/upload.py:249"
+rationale = "s3transfer uses `size >= multipart_threshold`; a file at exactly 8 MiB uses multipart. Mock returns non-multipart ETag for single-part multipart (HG-009)."

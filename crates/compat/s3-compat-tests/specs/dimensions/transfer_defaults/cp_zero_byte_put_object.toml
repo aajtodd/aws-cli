@@ -1,0 +1,35 @@
+[test]
+name = "cp_zero_byte_put_object"
+description = "cp of a zero-byte file uses single PutObject (well below multipart threshold)"
+tags = ["cp", "transfer_defaults"]
+
+[[setup.buckets]]
+name = "{bucket}"
+
+[[setup.files]]
+path = "empty.txt"
+content = ""
+
+[command]
+args = ["s3", "cp", "empty.txt", "s3://{bucket}/empty.txt"]
+
+[expected]
+exit_code = 0
+
+[expected.stdout]
+mode = "exact"
+value = "upload: ./empty.txt to s3://{bucket}/empty.txt\n"
+
+[expected.stderr]
+mode = "exact"
+value = ""
+
+[[expected.objects]]
+key = "empty.txt"
+size = 0
+upload_method = "put_object"
+
+[source]
+refs = ["aws/aws-cli#399"]
+cli_ref = "awscli/customizations/s3/transferconfig.py:27"
+rationale = "#399 reported zero-byte files failing; v2 handles them via PutObject (below multipart_threshold)."

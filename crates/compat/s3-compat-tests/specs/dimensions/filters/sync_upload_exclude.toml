@@ -1,0 +1,53 @@
+[test]
+name = "sync_upload_exclude"
+description = "sync upload with --exclude skips matching files"
+tags = ["sync", "filters"]
+
+[[setup.buckets]]
+name = "{bucket}"
+
+[[setup.files]]
+path = "src/a.txt"
+content = "aa"
+
+[[setup.files]]
+path = "src/b.log"
+content = "bb"
+
+[[setup.files]]
+path = "src/c.dat"
+content = "cc"
+
+[command]
+args = ["s3", "sync", "src/", "s3://{bucket}/", "--exclude", "*.log"]
+
+[expected]
+exit_code = 0
+
+[expected.stdout]
+mode = "regex"
+value = [
+    "^Completed \\d+ Bytes/\\d+ Bytes \\([^)]+\\) with \\d+ file\\(s\\) remaining$",
+    "^upload: src/a\\.txt to s3://\\{bucket\\}/a\\.txt$",
+    "^upload: src/c\\.dat to s3://\\{bucket\\}/c\\.dat$",
+]
+
+[expected.stderr]
+mode = "exact"
+value = ""
+
+[[expected.objects]]
+key = "a.txt"
+content = "aa"
+
+[[expected.objects]]
+key = "c.dat"
+content = "cc"
+
+[[expected.objects]]
+key = "b.log"
+exists = false
+
+[source]
+cli_ref = "awscli/customizations/s3/filters.py:149"
+rationale = "Sync applies the same Filter.call iteration as cp; excluded files are not yielded and thus not synced"

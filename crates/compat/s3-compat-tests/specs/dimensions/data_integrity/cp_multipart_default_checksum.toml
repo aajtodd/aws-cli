@@ -1,0 +1,39 @@
+[test]
+name = "cp_multipart_default_checksum"
+description = "cp multipart upload applies CRC64NVME with FULL_OBJECT type (CRC64NVME supports full-object combination)"
+tags = ["cp", "data_integrity", "multipart"]
+
+[[setup.buckets]]
+name = "{bucket}"
+
+[[setup.files]]
+path = "big.bin"
+size = 9437184
+
+[command]
+args = ["s3", "cp", "big.bin", "s3://{bucket}/big.bin"]
+
+[expected]
+exit_code = 0
+
+[expected.stdout]
+mode = "regex"
+value = [
+    "^Completed [0-9.]+ [KMG]?i?B/9\\.0 MiB \\([^)]+\\) with 1 file\\(s\\) remaining$",
+    "^upload: \\./big\\.bin to s3://\\{bucket\\}/big\\.bin$",
+]
+
+[expected.stderr]
+mode = "exact"
+value = ""
+
+[[expected.objects]]
+key = "big.bin"
+size = 9437184
+checksum_crc64nvme = "qZCLpQJxII8="
+checksum_type = "FULL_OBJECT"
+
+[source]
+refs = ["aws/aws-cli#9214", "aws/aws-cli#9084"]
+cli_ref = "awscli/botocore/httpchecksum.py:42"
+rationale = "CRC64NVME is the default algorithm (httpchecksum.py:42); for multipart, S3 combines per-part CRC64NVME into a full-object checksum (checksum_type=FULL_OBJECT, not COMPOSITE)."

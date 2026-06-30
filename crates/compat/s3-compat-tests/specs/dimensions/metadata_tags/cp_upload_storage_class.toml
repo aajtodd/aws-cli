@@ -1,0 +1,34 @@
+[test]
+name = "cp_upload_storage_class"
+description = "cp --storage-class sets the storage class on uploaded object"
+tags = ["cp", "upload", "metadata_tags"]
+
+[source]
+cli_ref = "awscli/customizations/s3/utils.py:610"
+refs = ["aws/aws-cli#352"]
+rationale = "#352 added --storage-class to cp/mv/sync; _set_general_object_params maps 'storage_class' to 'StorageClass' in the request."
+
+[[setup.buckets]]
+name = "{bucket}"
+
+[[setup.files]]
+path = "data.bin"
+content = "binary payload"
+
+[command]
+args = ["s3", "cp", "./data.bin", "s3://{bucket}/data.bin", "--storage-class", "STANDARD_IA"]
+
+[expected]
+exit_code = 0
+
+[expected.stdout]
+mode = "regex"
+value = [
+    "^Completed 14 Bytes/14 Bytes \\([^)]+\\) with 1 file\\(s\\) remaining$",
+    "^upload: \\./data\\.bin to s3://\\{bucket\\}/data\\.bin$",
+]
+
+[[expected.objects]]
+key = "data.bin"
+content = "binary payload"
+storage_class = "STANDARD_IA"

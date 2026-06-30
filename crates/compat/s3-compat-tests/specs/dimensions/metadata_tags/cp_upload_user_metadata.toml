@@ -1,0 +1,34 @@
+[test]
+name = "cp_upload_user_metadata"
+description = "cp --metadata attaches user-defined x-amz-meta-* headers to uploaded object"
+tags = ["cp", "upload", "metadata_tags"]
+
+[source]
+cli_ref = "awscli/customizations/s3/utils.py:654"
+refs = ["aws/aws-cli#1652", "aws/aws-cli#1561"]
+rationale = "#1652 added --metadata support to cp; _set_metadata_params passes the dict as Metadata to PutObject."
+
+[[setup.buckets]]
+name = "{bucket}"
+
+[[setup.files]]
+path = "hello.txt"
+content = "hello world"
+
+[command]
+args = ["s3", "cp", "./hello.txt", "s3://{bucket}/hello.txt", "--metadata", "{\"project\":\"apollo\",\"version\":\"1.0\"}"]
+
+[expected]
+exit_code = 0
+
+[expected.stdout]
+mode = "regex"
+value = [
+    "^Completed 11 Bytes/11 Bytes \\([^)]+\\) with 1 file\\(s\\) remaining$",
+    "^upload: \\./hello\\.txt to s3://\\{bucket\\}/hello\\.txt$",
+]
+
+[[expected.objects]]
+key = "hello.txt"
+content = "hello world"
+metadata = { "project" = "apollo", "version" = "1.0" }

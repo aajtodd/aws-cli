@@ -1,0 +1,39 @@
+[test]
+name = "cp_upload_default_checksum"
+description = "cp upload applies CRC64NVME checksum by default (request_checksum_calculation=when_supported)"
+tags = ["cp", "data_integrity"]
+
+[[setup.buckets]]
+name = "{bucket}"
+
+[[setup.files]]
+path = "hello.txt"
+content = "hello world"
+
+[command]
+args = ["s3", "cp", "hello.txt", "s3://{bucket}/hello.txt"]
+
+[expected]
+exit_code = 0
+
+[expected.stdout]
+mode = "regex"
+value = [
+    "^Completed 11 Bytes/11 Bytes \\([^)]+\\) with 1 file\\(s\\) remaining$",
+    "^upload: \\./hello\\.txt to s3://\\{bucket\\}/hello\\.txt$",
+]
+
+[expected.stderr]
+mode = "exact"
+value = ""
+
+[[expected.objects]]
+key = "hello.txt"
+content = "hello world"
+checksum_crc64nvme = "jSnVw/bqjr4="
+checksum_type = "FULL_OBJECT"
+
+[source]
+refs = ["aws/aws-cli#9214", "aws/aws-cli#9084"]
+cli_ref = "awscli/botocore/httpchecksum.py:42"
+rationale = "#9214 announces the default integrity change; DEFAULT_CHECKSUM_ALGORITHM = CRC64NVME at httpchecksum.py:42, applied by s3transfer when request_checksum_calculation=when_supported (manager.py:522)."
