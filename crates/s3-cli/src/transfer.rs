@@ -20,7 +20,20 @@ pub(crate) fn build_tm(ctx: &AppContext) -> aws_sdk_s3_transfer_manager::Client 
     };
     // TODO: target_bandwidth is exposed on TM config but not yet implemented.
     // When TM implements TargetThroughput, wire ctx.s3_config_keys.target_bandwidth here.
-    let concurrency = ConcurrencyMode::default();
+    //
+    // FIXME(s3fio-bench): benchmark-only escape hatch. The Auto concurrency seed
+    // is bandwidth-derived (ceil(gbps / 0.4)), which under-provisions connections
+    // badly for tiny objects (128 KiB is latency-bound, not bandwidth-bound), so
+    // small-file `cp --recursive` throughput is request-rate-capped. This env var
+    // lets us sweep explicit concurrency to find the small-file ceiling. NOT a
+    // real config surface — proper fix is a `max_concurrent_requests` config key.
+    let concurrency = match std::env::var("AWS_S3_MAX_CONCURRENCY")
+        .ok()
+        .and_then(|v| v.parse::<usize>().ok())
+    {
+        Some(n) if n > 0 => ConcurrencyMode::Explicit(n),
+        _ => ConcurrencyMode::default(),
+    };
 
     let config = aws_sdk_s3_transfer_manager::Config::builder()
         .s3_config(s3_config)

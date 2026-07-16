@@ -3,6 +3,29 @@
 //! Handles argument parsing, SDK configuration, and SIGPIPE. The actual
 //! S3 command logic lives in the library crate ([`s3_cli::handle_s3_cmd`]).
 
+// FIXME(s3fio-bench): benchmark-only global allocator swap, gated by feature.
+// The default allocator (musl malloc in the cross-compiled build) round-trips
+// part-sized receive buffers through mmap/munmap under saturated small-file
+// transfers, producing a cross-core TLB-shootdown storm (system CPU ~24x user)
+// that caps `cp --recursive` throughput on tiny objects. jemalloc/mimalloc pool
+// and reuse those buffers. The TM's own `cp` example ships the jemalloc config
+// mirrored below for exactly this reason. Decide on a shipped default later.
+#[cfg(all(feature = "jemalloc", not(target_env = "msvc")))]
+#[global_allocator]
+static GLOBAL: jemallocator::Jemalloc = jemallocator::Jemalloc;
+
+// Mirror the TM cp example's jemalloc tuning so the jemalloc arm is
+// apples-to-apples with the rust-tm engine. Overridable via _RJEM_MALLOC_CONF.
+#[cfg(all(feature = "jemalloc", not(target_env = "msvc")))]
+#[allow(non_upper_case_globals)]
+#[export_name = "_rjem_malloc_conf"]
+pub static malloc_conf: &[u8] =
+    b"background_thread:true,narenas:32,dirty_decay_ms:1000,muzzy_decay_ms:0\0";
+
+#[cfg(feature = "mimalloc")]
+#[global_allocator]
+static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
+
 use std::process::ExitCode;
 
 use clap::Parser;
@@ -175,8 +198,22 @@ fn resolve_profile_name(cli_flag: Option<&str>) -> Option<String> {
 /// in the write paths. A full Windows solution would use SetConsoleCtrlHandler
 /// or similar — deferred until we have Windows CI.
 fn reset_sigpipe() {
-    #[cfg(unix)]
-    unsafe {
-        libc::signal(libc::SIGPIPE, libc::SIG_DFL);
-    }
+    // FIXME(s3fio-bench): setting SIGPIPE to SIG_DFL kills the whole process
+    // on ANY broken pipe — including the thousands of internal S3 socket writes
+    // the SDK/TM make. S3 routinely closes keep-alive connections mid-transfer,
+    // so under high connection churn (e.g. `cp --recursive` over tens of
+    // thousands of small objects) a routine connection close terminates the
+    // process with SIGPIPE (exit 141), intermittently, at random progress.
+    //
+    // Rust's std installs SIG_IGN by default precisely so these writes surface
+    // as recoverable EPIPE I/O errors instead of signals. Leaving SIGPIPE
+    // ignored fixes the crash. The proper fix restores clean `| head` UX by
+    // matching ErrorKind::BrokenPipe on the *stdout* write path and exiting 0
+    // there — without re-enabling SIG_DFL for socket writes. Tracked separately.
+    //
+    // Temporarily disabled to unblock benchmarking:
+    // #[cfg(unix)]
+    // unsafe {
+    //     libc::signal(libc::SIGPIPE, libc::SIG_DFL);
+    // }
 }
